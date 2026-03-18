@@ -27,6 +27,9 @@ const DUMMY_ADJ: Adjustments = {
   blur: 0,
   sharpness: 0,
   temperature: 0,
+  hue: 0,
+  grayscale: 0,
+  sepia: 0,
 };
 
 function FilterThumb({

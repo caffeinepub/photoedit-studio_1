@@ -19,14 +19,24 @@ const CROP_CORNERS: [number, number][] = [
 ];
 const GRID_CELLS = Array.from({ length: 9 }, (_, i) => i);
 
+const FONT_FAMILY_MAP: Record<TextLayer["fontFamily"], string> = {
+  default: "system-ui",
+  poppins: "'Poppins', sans-serif",
+  pacifico: "'Pacifico', cursive",
+  orbitron: "'Orbitron', sans-serif",
+  bebas: "'Bebas Neue', sans-serif",
+  playfair: "'Playfair Display', serif",
+};
+
 function TextOverlay({ layer }: { layer: TextLayer }) {
   const [pos, setPos] = useState({ x: layer.x, y: layer.y });
   const dragging = useRef(false);
   const offset = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLElement | null>(null);
 
-  const getNeonStyle = (color: string) => ({
+  const getNeonStyle = (color: string): React.CSSProperties => ({
     textShadow: `0 0 7px ${color}, 0 0 21px ${color}, 0 0 42px ${color}`,
+    color,
   });
 
   const getGlitchStyle = (color: string): React.CSSProperties => ({
@@ -68,6 +78,45 @@ function TextOverlay({ layer }: { layer: TextLayer }) {
     window.addEventListener("mouseup", onUp);
   }
 
+  function onTouchStart(e: React.TouchEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragging.current = true;
+    const parent = (e.currentTarget as HTMLElement).parentElement;
+    if (!parent) return;
+    containerRef.current = parent;
+    const rect = parent.getBoundingClientRect();
+    const touch = e.touches[0];
+    offset.current = {
+      x: touch.clientX - (pos.x / 100) * rect.width,
+      y: touch.clientY - (pos.y / 100) * rect.height,
+    };
+    const onTouchMove = (ev: TouchEvent) => {
+      if (!dragging.current || !containerRef.current) return;
+      const r = containerRef.current.getBoundingClientRect();
+      const t = ev.touches[0];
+      setPos({
+        x: Math.max(
+          0,
+          Math.min(100, ((t.clientX - offset.current.x) / r.width) * 100),
+        ),
+        y: Math.max(
+          0,
+          Math.min(100, ((t.clientY - offset.current.y) / r.height) * 100),
+        ),
+      });
+    };
+    const onTouchEnd = () => {
+      dragging.current = false;
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
+    };
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("touchend", onTouchEnd);
+  }
+
+  const fontFamily = FONT_FAMILY_MAP[layer.fontFamily ?? "default"];
+
   const baseStyle: React.CSSProperties = {
     position: "absolute",
     left: `${pos.x}%`,
@@ -78,13 +127,34 @@ function TextOverlay({ layer }: { layer: TextLayer }) {
     cursor: "move",
     userSelect: "none",
     whiteSpace: "nowrap",
+    fontFamily,
     fontWeight: layer.fontStyle !== "normal" ? "bold" : "normal",
+    touchAction: "none",
     ...(layer.fontStyle === "neon" ? getNeonStyle(layer.color) : {}),
     ...(layer.fontStyle === "glitch" ? getGlitchStyle(layer.color) : {}),
+    ...(layer.fontStyle === "gradient"
+      ? {
+          background: "linear-gradient(45deg, red, blue)",
+          WebkitBackgroundClip: "text",
+          color: "transparent",
+          WebkitTextFillColor: "transparent",
+        }
+      : {}),
+    ...(layer.fontStyle === "shadow"
+      ? { textShadow: "2px 2px 5px black" }
+      : {}),
+    ...(layer.fontStyle === "stroke" ? { WebkitTextStroke: "1px black" } : {}),
+    ...(layer.fontStyle === "text3d"
+      ? { textShadow: "2px 2px 0 #000, 4px 4px 0 #555" }
+      : {}),
   };
 
   return (
-    <div style={baseStyle} onMouseDown={onMouseDown}>
+    <div
+      style={baseStyle}
+      onMouseDown={onMouseDown}
+      onTouchStart={onTouchStart}
+    >
       {layer.text}
     </div>
   );
@@ -130,6 +200,43 @@ function StickerOverlay({ layer }: { layer: StickerLayer }) {
     window.addEventListener("mouseup", onUp);
   }
 
+  function onTouchStart(e: React.TouchEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragging.current = true;
+    const parent = (e.currentTarget as HTMLElement).parentElement;
+    if (!parent) return;
+    containerRef.current = parent;
+    const rect = parent.getBoundingClientRect();
+    const touch = e.touches[0];
+    offset.current = {
+      x: touch.clientX - (pos.x / 100) * rect.width,
+      y: touch.clientY - (pos.y / 100) * rect.height,
+    };
+    const onTouchMove = (ev: TouchEvent) => {
+      if (!dragging.current || !containerRef.current) return;
+      const r = containerRef.current.getBoundingClientRect();
+      const t = ev.touches[0];
+      setPos({
+        x: Math.max(
+          0,
+          Math.min(100, ((t.clientX - offset.current.x) / r.width) * 100),
+        ),
+        y: Math.max(
+          0,
+          Math.min(100, ((t.clientY - offset.current.y) / r.height) * 100),
+        ),
+      });
+    };
+    const onTouchEnd = () => {
+      dragging.current = false;
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
+    };
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("touchend", onTouchEnd);
+  }
+
   return (
     <div
       style={{
@@ -141,8 +248,10 @@ function StickerOverlay({ layer }: { layer: StickerLayer }) {
         cursor: "move",
         userSelect: "none",
         lineHeight: 1,
+        touchAction: "none",
       }}
       onMouseDown={onMouseDown}
+      onTouchStart={onTouchStart}
     >
       {layer.isCustom ? (
         <img
@@ -250,7 +359,11 @@ export default function CanvasStage() {
     img.src = state.imageUrl;
   }, [state.imageUrl, state.cropRect, dispatch]);
 
-  const filterStr = buildFilterString(state.adjustments, state.activeFilter);
+  const filterStr = buildFilterString(
+    state.adjustments,
+    state.activeFilter,
+    state.specialEffect,
+  );
   const imgTransform = [
     `rotate(${state.rotation}deg)`,
     state.flipH ? "scaleX(-1)" : "",
@@ -346,10 +459,17 @@ export default function CanvasStage() {
                 onMouseUp={handleCropMouseUp}
               >
                 {/* Background layer */}
-                {state.backgroundUrl && (
+                {(state.backgroundUrl || state.bgColor) && (
                   <div
                     className="absolute inset-0 rounded"
-                    style={{ background: state.backgroundUrl, zIndex: 0 }}
+                    style={{
+                      background: state.backgroundUrl ?? undefined,
+                      backgroundColor:
+                        !state.backgroundUrl && state.bgColor
+                          ? state.bgColor
+                          : undefined,
+                      zIndex: 0,
+                    }}
                   />
                 )}
                 <img

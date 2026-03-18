@@ -27,6 +27,9 @@ export interface Adjustments {
   blur: number;
   sharpness: number;
   temperature: number;
+  hue: number;
+  grayscale: number;
+  sepia: number;
 }
 
 export interface CropRect {
@@ -41,7 +44,22 @@ export type AspectRatio = "free" | "1:1" | "16:9" | "4:3" | "3:2";
 export interface TextLayer {
   id: string;
   text: string;
-  fontStyle: "normal" | "bold" | "neon" | "glitch";
+  fontStyle:
+    | "normal"
+    | "bold"
+    | "neon"
+    | "glitch"
+    | "gradient"
+    | "shadow"
+    | "stroke"
+    | "text3d";
+  fontFamily:
+    | "default"
+    | "poppins"
+    | "pacifico"
+    | "orbitron"
+    | "bebas"
+    | "playfair";
   color: string;
   fontSize: number;
   x: number;
@@ -64,6 +82,9 @@ const DEFAULT_ADJUSTMENTS: Adjustments = {
   blur: 0,
   sharpness: 0,
   temperature: 0,
+  hue: 0,
+  grayscale: 0,
+  sepia: 0,
 };
 
 interface HistoryEntry {
@@ -96,6 +117,8 @@ export interface EditorState {
   showBeforeAfter: boolean;
   isPremium: boolean;
   backgroundUrl: string | null;
+  specialEffect: string | null;
+  bgColor: string | null;
 }
 
 type Action =
@@ -123,7 +146,9 @@ type Action =
   | { type: "SET_BEFORE_IMAGE"; url: string | null }
   | { type: "TOGGLE_BEFORE_AFTER" }
   | { type: "SET_PREMIUM"; value: boolean }
-  | { type: "SET_BACKGROUND"; url: string | null };
+  | { type: "SET_BACKGROUND"; url: string | null }
+  | { type: "SET_SPECIAL_EFFECT"; effect: string | null }
+  | { type: "SET_BG_COLOR"; color: string | null };
 
 const INITIAL_STATE: EditorState = {
   imageUrl: null,
@@ -147,6 +172,8 @@ const INITIAL_STATE: EditorState = {
   showBeforeAfter: false,
   isPremium: false,
   backgroundUrl: null,
+  specialEffect: null,
+  bgColor: null,
 };
 
 function snapshotState(state: EditorState): HistoryEntry {
@@ -231,6 +258,8 @@ function reducer(state: EditorState, action: Action): EditorState {
         rotation: 0,
         flipH: false,
         flipV: false,
+        specialEffect: null,
+        bgColor: null,
       };
       return pushHistory(reset);
     }
@@ -239,9 +268,12 @@ function reducer(state: EditorState, action: Action): EditorState {
         ...state,
         adjustments: {
           ...state.adjustments,
-          brightness: 5,
-          contrast: 10,
-          saturation: 8,
+          brightness: 10,
+          contrast: 20,
+          saturation: 30,
+          hue: 0,
+          grayscale: 0,
+          sepia: 0,
         },
       };
       return pushHistory(auto);
@@ -290,6 +322,10 @@ function reducer(state: EditorState, action: Action): EditorState {
       return { ...state, isPremium: action.value };
     case "SET_BACKGROUND":
       return { ...state, backgroundUrl: action.url };
+    case "SET_SPECIAL_EFFECT":
+      return { ...state, specialEffect: action.effect };
+    case "SET_BG_COLOR":
+      return { ...state, bgColor: action.color };
     default:
       return state;
   }
@@ -298,7 +334,11 @@ function reducer(state: EditorState, action: Action): EditorState {
 interface EditorContextValue {
   state: EditorState;
   dispatch: React.Dispatch<Action>;
-  buildFilterString: (adj: Adjustments, filter: FilterPreset) => string;
+  buildFilterString: (
+    adj: Adjustments,
+    filter: FilterPreset,
+    specialEffect?: string | null,
+  ) => string;
 }
 
 const EditorContext = createContext<EditorContextValue | null>(null);
@@ -317,9 +357,17 @@ export const FILTER_DEFINITIONS: Record<FilterPreset, string> = {
   hdr: "contrast(1.35) saturate(1.55) brightness(1.05)",
 };
 
+const SPECIAL_EFFECT_FILTERS: Record<string, string> = {
+  blur: "blur(5px)",
+  sharp: "contrast(150%)",
+  glow: "drop-shadow(0 0 10px cyan)",
+  invert: "invert(100%)",
+};
+
 export function buildFilterString(
   adj: Adjustments,
   filter: FilterPreset,
+  specialEffect?: string | null,
 ): string {
   const b = 1 + adj.brightness / 100;
   const c = 1 + adj.contrast / 100;
@@ -332,7 +380,11 @@ export function buildFilterString(
     `saturate(${s.toFixed(3)})`,
     blur > 0 ? `blur(${blur.toFixed(1)}px)` : "",
     hue !== 0 ? `hue-rotate(${hue.toFixed(1)}deg)` : "",
+    adj.hue !== 0 ? `hue-rotate(${adj.hue}deg)` : "",
+    adj.grayscale !== 0 ? `grayscale(${adj.grayscale}%)` : "",
+    adj.sepia !== 0 ? `sepia(${adj.sepia}%)` : "",
     FILTER_DEFINITIONS[filter],
+    specialEffect ? (SPECIAL_EFFECT_FILTERS[specialEffect] ?? "") : "",
   ];
   return parts.filter(Boolean).join(" ");
 }
@@ -341,7 +393,8 @@ export function EditorProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
 
   const buildFilter = useCallback(
-    (adj: Adjustments, filter: FilterPreset) => buildFilterString(adj, filter),
+    (adj: Adjustments, filter: FilterPreset, specialEffect?: string | null) =>
+      buildFilterString(adj, filter, specialEffect),
     [],
   );
 
