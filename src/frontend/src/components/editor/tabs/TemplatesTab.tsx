@@ -10,6 +10,7 @@ const TEMPLATES = [
     w: 1280,
     h: 720,
     aspect: "16:9",
+    bg: "linear-gradient(135deg, #ff0000 0%, #cc0000 100%)",
   },
   {
     id: "ig_post",
@@ -18,6 +19,7 @@ const TEMPLATES = [
     w: 1080,
     h: 1080,
     aspect: "1:1",
+    bg: "linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%)",
   },
   {
     id: "ig_story",
@@ -26,6 +28,7 @@ const TEMPLATES = [
     w: 1080,
     h: 1920,
     aspect: "9:16",
+    bg: "linear-gradient(135deg, #833ab4 0%, #fd1d1d 100%)",
   },
   {
     id: "wa_dp",
@@ -34,6 +37,7 @@ const TEMPLATES = [
     w: 512,
     h: 512,
     aspect: "1:1",
+    bg: "linear-gradient(135deg, #25d366 0%, #128c7e 100%)",
   },
   {
     id: "tw_header",
@@ -42,6 +46,7 @@ const TEMPLATES = [
     w: 1500,
     h: 500,
     aspect: "3:1",
+    bg: "linear-gradient(135deg, #1da1f2 0%, #0d8ecf 100%)",
   },
   {
     id: "fb_cover",
@@ -50,8 +55,19 @@ const TEMPLATES = [
     w: 851,
     h: 315,
     aspect: "~3:1",
+    bg: "linear-gradient(135deg, #1877f2 0%, #0c5fcc 100%)",
   },
 ];
+
+function loadTemplate(
+  src: string,
+  dispatch: (a: { type: string; url: string; name: string }) => void,
+  label: string,
+) {
+  // Load the template image as the canvas background
+  dispatch({ type: "LOAD_IMAGE", url: src, name: label });
+  toast.success(`Template loaded: ${label}`);
+}
 
 export default function TemplatesTab() {
   const { state, dispatch } = useEditor();
@@ -90,8 +106,11 @@ export default function TemplatesTab() {
       }
       ctx.drawImage(img, sx, sy, sw, sh, 0, 0, t.w, t.h);
       const newUrl = canvas.toDataURL("image/png");
-      dispatch({ type: "LOAD_IMAGE", url: newUrl, name: t.label });
-      toast.success(`Applied ${t.label} template (${t.w}×${t.h})`);
+      loadTemplate(
+        newUrl,
+        dispatch as Parameters<typeof loadTemplate>[1],
+        t.label,
+      );
     };
     img.src = state.imageUrl;
   }
@@ -101,10 +120,57 @@ export default function TemplatesTab() {
       <p className="text-xs font-semibold text-foreground uppercase tracking-wider mb-3">
         Templates
       </p>
-      <div className="space-y-2">
+
+      {/* Thumbnail Grid */}
+      <div className="templates grid grid-cols-2 gap-2 mb-4">
         {TEMPLATES.map((t) => (
           <button
             key={t.id}
+            type="button"
+            title={t.label}
+            onClick={() => applyTemplate(t)}
+            disabled={!state.imageUrl}
+            className={cn(
+              "group relative rounded-lg overflow-hidden border border-border",
+              "hover:border-primary hover:scale-105 transition-all duration-200",
+              "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100",
+              "focus:outline-none focus:ring-2 focus:ring-primary",
+            )}
+            data-ocid={`template.${t.id}.thumb`}
+          >
+            {/* Thumbnail preview */}
+            <div
+              className="w-full flex items-center justify-center"
+              style={{
+                background: t.bg,
+                aspectRatio: `${t.w} / ${t.h}`,
+                minHeight: 40,
+                maxHeight: 72,
+              }}
+            >
+              <span className="text-2xl drop-shadow">{t.emoji}</span>
+            </div>
+            {/* Label overlay */}
+            <div className="absolute inset-x-0 bottom-0 bg-black/60 px-1 py-0.5">
+              <p className="text-[9px] text-white font-semibold truncate leading-tight">
+                {t.label}
+              </p>
+              <p className="text-[8px] text-white/70 leading-tight">
+                {t.aspect}
+              </p>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {/* List view */}
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+        All Sizes
+      </p>
+      <div className="space-y-2">
+        {TEMPLATES.map((t) => (
+          <button
+            key={`list-${t.id}`}
             type="button"
             onClick={() => applyTemplate(t)}
             disabled={!state.imageUrl}
@@ -127,7 +193,7 @@ export default function TemplatesTab() {
               style={{
                 width: 32,
                 height: Math.round(32 * (t.h / t.w)),
-                background: "oklch(0.25 0.02 222)",
+                background: t.bg,
                 minHeight: 10,
                 maxHeight: 40,
               }}
@@ -135,6 +201,7 @@ export default function TemplatesTab() {
           </button>
         ))}
       </div>
+
       {!state.imageUrl && (
         <p
           className="text-xs text-muted-foreground text-center mt-4"

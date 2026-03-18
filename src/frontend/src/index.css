@@ -128,3 +128,41 @@
   display: flex;
   justify-content: space-around;
 }
+
+/* Sidebar above main content */
+.sidebar {
+  z-index: 10;
+}
+
+.main-content {
+  z-index: 1;
+}
+
+/* Panel scrollable with max viewport height + glassmorphism */
+.panel {
+  overflow-y: auto;
+  max-height: 100vh;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Floating emoji animation */
+.floating-emoji {
+  position: fixed;
+  font-size: 50px;
+  pointer-events: none;
+  animation: floatUp 2s ease-out forwards;
+  z-index: 9999;
+}
+
+@keyframes floatUp {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-200px) scale(1.5);
+  }
+}
