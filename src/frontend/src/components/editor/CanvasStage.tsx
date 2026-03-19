@@ -826,6 +826,7 @@ export default function CanvasStage() {
                   />
                 )}
                 <img
+                  id="editorImage"
                   ref={editingImgRef}
                   src={state.imageUrl}
                   alt="Editing"

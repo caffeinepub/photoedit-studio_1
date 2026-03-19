@@ -39,7 +39,11 @@ const TWEMOJI_STICKERS = [
   },
   {
     label: "🔥 Fire",
-    url: "https://upload.wikimedia.org/wikipedia/commons/3/36/Emoji_u1f525.svg",
+    url: "https://cdn.jsdelivr.net/gh/twitter/twemoji@latest/assets/72x72/1f525.png",
+  },
+  {
+    label: "😎 Cool",
+    url: "https://cdn.jsdelivr.net/gh/twitter/twemoji@latest/assets/72x72/1f60e.png",
   },
   {
     label: "😂 ROFL",
@@ -165,7 +169,7 @@ export default function StickerTab() {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search emoji (fire, love, star...)"
           className="pl-8 h-8 text-xs bg-input border-border"
-          data-ocid="sticker.search.input"
+          data-ocid="sticker.search_input"
         />
       </div>
 
@@ -213,7 +217,7 @@ export default function StickerTab() {
                 className="aspect-square flex items-center justify-center rounded-md hover:bg-muted/60 border border-transparent hover:border-border transition-colors p-1"
                 disabled={!state.imageUrl}
                 title={s.label}
-                data-ocid="sticker.image_button"
+                data-ocid="sticker.button"
               >
                 <img
                   src={s.url}
@@ -246,7 +250,7 @@ export default function StickerTab() {
                   className="aspect-square overflow-hidden rounded-md hover:ring-2 hover:ring-primary border border-border transition-all"
                   disabled={!state.imageUrl}
                   title={s.title}
-                  data-ocid="sticker.giphy_button"
+                  data-ocid="sticker.button"
                 >
                   <img
                     src={s.url}

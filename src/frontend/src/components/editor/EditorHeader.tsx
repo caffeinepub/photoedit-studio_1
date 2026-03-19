@@ -16,13 +16,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useEditor } from "@/contexts/EditorContext";
+import { buildFilterString, useEditor } from "@/contexts/EditorContext";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useCreateProject } from "@/hooks/useQueries";
 import { cn } from "@/lib/utils";
 import {
   Camera,
   Crown,
+  Download,
   ImagePlus,
   Layers2,
   Loader2,
@@ -59,6 +60,15 @@ const VIRAL_STICKERS = ["🔥", "✨", "💯", "👑", "🎉", "😍", "🌟", "
 const VIRAL_FONTS = ["poppins", "orbitron", "bebas"] as const;
 const VIRAL_STYLES = ["neon", "gradient", "shadow"] as const;
 
+const FONT_MAP: Record<string, string> = {
+  default: "sans-serif",
+  poppins: "'Poppins', sans-serif",
+  pacifico: "'Pacifico', cursive",
+  orbitron: "'Orbitron', sans-serif",
+  bebas: "'Bebas Neue', sans-serif",
+  playfair: "'Playfair Display', serif",
+};
+
 export default function EditorHeader() {
   const { login, clear, loginStatus, identity, isInitializing } =
     useInternetIdentity();
@@ -69,6 +79,7 @@ export default function EditorHeader() {
     state.imageName || "My Project",
   );
   const [isSaving, setIsSaving] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isLoggedIn = !!identity;
@@ -86,8 +97,188 @@ export default function EditorHeader() {
       });
     };
     reader.readAsDataURL(file);
-    // Reset input so same file can be re-selected
     e.target.value = "";
+  }
+
+  async function handleDownload() {
+    if (!state.imageUrl) {
+      toast.error("Upload an image first!");
+      return;
+    }
+    setIsDownloading(true);
+    try {
+      // Load base image
+      const baseImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = state.imageUrl as string;
+      });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = baseImg.naturalWidth;
+      canvas.height = baseImg.naturalHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas not supported");
+
+      // Apply CSS filter via canvas filter API
+      const filterStr = buildFilterString(
+        state.adjustments,
+        state.activeFilter,
+        state.specialEffect,
+      );
+      if (filterStr) {
+        ctx.filter = filterStr;
+      }
+
+      // Draw base image (handle flip transforms)
+      ctx.save();
+      if (state.flipH || state.flipV) {
+        ctx.translate(
+          state.flipH ? canvas.width : 0,
+          state.flipV ? canvas.height : 0,
+        );
+        ctx.scale(state.flipH ? -1 : 1, state.flipV ? -1 : 1);
+      }
+      ctx.drawImage(baseImg, 0, 0);
+      ctx.restore();
+
+      // Reset filter for overlays
+      ctx.filter = "none";
+
+      // Bake sticker layers
+      for (const layer of state.stickerLayers) {
+        const px = (layer.x / 100) * canvas.width;
+        const py = (layer.y / 100) * canvas.height;
+        const sz = layer.size * (canvas.width / 500); // scale relative to canvas
+
+        if (layer.isCustom) {
+          // Image sticker
+          try {
+            const stickerImg = await new Promise<HTMLImageElement>(
+              (resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = "anonymous";
+                img.onload = () => resolve(img);
+                img.onerror = reject;
+                img.src = layer.content;
+              },
+            );
+            ctx.save();
+            if (layer.rotation) {
+              ctx.translate(px, py);
+              ctx.rotate((layer.rotation * Math.PI) / 180);
+              ctx.drawImage(stickerImg, -sz / 2, -sz / 2, sz, sz);
+            } else {
+              ctx.drawImage(stickerImg, px - sz / 2, py - sz / 2, sz, sz);
+            }
+            ctx.restore();
+          } catch {
+            // Skip sticker if image load fails
+          }
+        } else {
+          // Emoji sticker
+          ctx.save();
+          ctx.font = `${sz}px serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          if (layer.rotation) {
+            ctx.translate(px, py);
+            ctx.rotate((layer.rotation * Math.PI) / 180);
+            ctx.fillText(layer.content, 0, 0);
+          } else {
+            ctx.fillText(layer.content, px, py);
+          }
+          ctx.restore();
+        }
+      }
+
+      // Bake text layers
+      for (const layer of state.textLayers) {
+        const px = (layer.x / 100) * canvas.width;
+        const py = (layer.y / 100) * canvas.height;
+        const fs = layer.fontSize * (canvas.width / 500);
+        const fontFamily = FONT_MAP[layer.fontFamily] || "sans-serif";
+
+        ctx.save();
+        ctx.font = `${layer.fontStyle === "bold" ? "bold" : ""} ${fs}px ${fontFamily}`;
+        ctx.textAlign = layer.align || "center";
+        ctx.textBaseline = "middle";
+
+        if (layer.rotation) {
+          ctx.translate(px, py);
+          ctx.rotate((layer.rotation * Math.PI) / 180);
+        } else {
+          ctx.translate(px, py);
+        }
+
+        switch (layer.fontStyle) {
+          case "neon":
+            ctx.fillStyle = "#fff";
+            ctx.shadowColor = "cyan";
+            ctx.shadowBlur = 20;
+            ctx.fillText(layer.text, 0, 0);
+            break;
+          case "gradient": {
+            const grad = ctx.createLinearGradient(-fs * 2, 0, fs * 2, 0);
+            grad.addColorStop(0, "red");
+            grad.addColorStop(1, "blue");
+            ctx.fillStyle = grad;
+            ctx.fillText(layer.text, 0, 0);
+            break;
+          }
+          case "shadow":
+            ctx.shadowColor = "rgba(0,0,0,0.7)";
+            ctx.shadowBlur = 8;
+            ctx.shadowOffsetX = 3;
+            ctx.shadowOffsetY = 3;
+            ctx.fillStyle = layer.color || "#ffffff";
+            ctx.fillText(layer.text, 0, 0);
+            break;
+          case "stroke":
+            ctx.strokeStyle = "#000";
+            ctx.lineWidth = 2;
+            ctx.strokeText(layer.text, 0, 0);
+            ctx.fillStyle = layer.color || "#ffffff";
+            ctx.fillText(layer.text, 0, 0);
+            break;
+          case "text3d":
+            ctx.fillStyle = "#555";
+            ctx.fillText(layer.text, 4, 4);
+            ctx.fillStyle = "#000";
+            ctx.fillText(layer.text, 2, 2);
+            ctx.fillStyle = layer.color || "#ffffff";
+            ctx.fillText(layer.text, 0, 0);
+            break;
+          case "glitch":
+            ctx.fillStyle = "rgba(255,0,0,0.7)";
+            ctx.fillText(layer.text, -2, 0);
+            ctx.fillStyle = "rgba(0,255,255,0.7)";
+            ctx.fillText(layer.text, 2, 0);
+            ctx.fillStyle = layer.color || "#ffffff";
+            ctx.fillText(layer.text, 0, 0);
+            break;
+          default:
+            ctx.fillStyle = layer.color || "#ffffff";
+            ctx.fillText(layer.text, 0, 0);
+        }
+        ctx.restore();
+      }
+
+      // Export as PNG (converts JPG→PNG automatically)
+      const pngData = canvas.toDataURL("image/png");
+      const link = document.createElement("a");
+      link.download = "edited-photo.png";
+      link.href = pngData;
+      link.click();
+      toast.success("Downloaded as PNG! 🎉");
+    } catch (err) {
+      console.error(err);
+      toast.error("Download failed. Try again.");
+    } finally {
+      setIsDownloading(false);
+    }
   }
 
   async function handleSave() {
@@ -116,12 +307,10 @@ export default function EditorHeader() {
       toast.error("Upload an image first!");
       return;
     }
-    // Apply random filter
     const filter =
       VIRAL_FILTERS[Math.floor(Math.random() * VIRAL_FILTERS.length)];
     dispatch({ type: "SET_FILTER", filter });
 
-    // Add random text
     const textContent =
       VIRAL_TEXTS[Math.floor(Math.random() * VIRAL_TEXTS.length)];
     const fontFamily =
@@ -146,7 +335,6 @@ export default function EditorHeader() {
       layers: [...state.textLayers, textLayer],
     });
 
-    // Add 2 random stickers
     const usedIndices: number[] = [];
     for (let i = 0; i < 2; i++) {
       let idx: number;
@@ -206,7 +394,7 @@ export default function EditorHeader() {
       </div>
 
       {/* Center buttons */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         {/* New Photo Upload */}
         <input
           ref={fileInputRef}
@@ -214,6 +402,7 @@ export default function EditorHeader() {
           accept="image/*"
           className="hidden"
           onChange={handleNewPhoto}
+          id="uploadImage"
           data-ocid="header.upload.input"
         />
         <TooltipProvider delayDuration={300}>
@@ -236,44 +425,85 @@ export default function EditorHeader() {
             </TooltipTrigger>
             <TooltipContent>Upload a new photo</TooltipContent>
           </Tooltip>
+
+          {/* Download PNG */}
+          {state.imageUrl && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleDownload}
+                  disabled={isDownloading}
+                  className="flex items-center gap-1.5 px-3 h-7 rounded-full text-xs font-semibold border transition-all hover:opacity-90 disabled:opacity-60"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, oklch(0.45 0.18 145), oklch(0.4 0.16 165))",
+                    borderColor: "oklch(0.5 0.18 145 / 0.5)",
+                    color: "white",
+                  }}
+                  data-ocid="header.download.button"
+                >
+                  {isDownloading ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5" />
+                  )}
+                  <span className="hidden sm:inline">Download PNG</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Download as PNG (bakes all layers)
+              </TooltipContent>
+            </Tooltip>
+          )}
+
+          {/* Auto Viral Edit */}
+          {state.imageUrl && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={autoViralEdit}
+                  className="flex items-center gap-1.5 px-3 h-7 rounded-full text-xs font-bold border transition-all"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, oklch(0.6 0.25 45), oklch(0.55 0.28 20))",
+                    borderColor: "oklch(0.65 0.25 45 / 0.5)",
+                    color: "white",
+                  }}
+                  data-ocid="header.auto_viral.button"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Auto Viral</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Auto Viral Edit</TooltipContent>
+            </Tooltip>
+          )}
+
+          {/* Before/After toggle */}
+          {state.imageUrl && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => dispatch({ type: "TOGGLE_BEFORE_AFTER" })}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 h-7 rounded-full text-xs font-medium border transition-all",
+                    state.showBeforeAfter
+                      ? "border-primary bg-primary/20 text-primary glow-primary"
+                      : "border-border bg-card/40 text-muted-foreground hover:text-foreground",
+                  )}
+                  data-ocid="header.before_after.toggle"
+                >
+                  <Layers2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Before / After</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Before / After</TooltipContent>
+            </Tooltip>
+          )}
         </TooltipProvider>
-
-        {/* Auto Viral Edit */}
-        {state.imageUrl && (
-          <button
-            type="button"
-            onClick={autoViralEdit}
-            className="flex items-center gap-1.5 px-3 h-7 rounded-full text-xs font-bold border transition-all"
-            style={{
-              background:
-                "linear-gradient(135deg, oklch(0.6 0.25 45), oklch(0.55 0.28 20))",
-              borderColor: "oklch(0.65 0.25 45 / 0.5)",
-              color: "white",
-            }}
-            data-ocid="header.auto_viral.button"
-          >
-            <Zap className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Auto Viral</span>
-          </button>
-        )}
-
-        {/* Before/After toggle */}
-        {state.imageUrl && (
-          <button
-            type="button"
-            onClick={() => dispatch({ type: "TOGGLE_BEFORE_AFTER" })}
-            className={cn(
-              "flex items-center gap-1.5 px-3 h-7 rounded-full text-xs font-medium border transition-all",
-              state.showBeforeAfter
-                ? "border-primary bg-primary/20 text-primary glow-primary"
-                : "border-border bg-card/40 text-muted-foreground hover:text-foreground",
-            )}
-            data-ocid="header.before_after.toggle"
-          >
-            <Layers2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Before / After</span>
-          </button>
-        )}
       </div>
 
       {/* Actions */}
