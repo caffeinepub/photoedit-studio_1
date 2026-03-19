@@ -200,6 +200,43 @@ function TextOverlay({ layer }: { layer: TextLayer }) {
       </div>
       {isSelected && (
         <>
+          {/* Delete button */}
+          <button
+            type="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.stopPropagation();
+                dispatch({ type: "DELETE_TEXT_LAYER", id: layer.id });
+              }
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              dispatch({ type: "DELETE_TEXT_LAYER", id: layer.id });
+            }}
+            style={{
+              position: "absolute",
+              left: handlePos.x,
+              top: handlePos.y,
+              transform: `translate(-50%, -${layer.fontSize / 2 + 22}px)`,
+              width: 22,
+              height: 22,
+              background: "#ef4444",
+              border: "2px solid white",
+              borderRadius: "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              zIndex: 40,
+              color: "white",
+              fontSize: 14,
+              fontWeight: "bold",
+              userSelect: "none",
+            }}
+          >
+            ×
+          </button>
           {/* Resize handle: bottom-right corner increases font size */}
           <div
             style={{
@@ -427,6 +464,43 @@ function StickerOverlay({ layer }: { layer: StickerLayer }) {
       </div>
       {isSelected && (
         <>
+          {/* Delete button */}
+          <button
+            type="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.stopPropagation();
+                dispatch({ type: "DELETE_STICKER_LAYER", id: layer.id });
+              }
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              dispatch({ type: "DELETE_STICKER_LAYER", id: layer.id });
+            }}
+            style={{
+              position: "absolute",
+              left: handlePos.x,
+              top: handlePos.y,
+              transform: `translate(-${displaySize / 2 + 22}px, -${displaySize / 2 + 22}px)`,
+              width: 22,
+              height: 22,
+              background: "#ef4444",
+              border: "2px solid white",
+              borderRadius: "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              zIndex: 40,
+              color: "white",
+              fontSize: 14,
+              fontWeight: "bold",
+              userSelect: "none",
+            }}
+          >
+            ×
+          </button>
           {/* SE resize handle */}
           <div
             style={{
@@ -733,10 +807,22 @@ export default function CanvasStage() {
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onClick={handleCanvasClick}
-      onKeyDown={(e) =>
-        e.key === "Escape" &&
-        dispatch({ type: "SET_SELECTED_LAYER", id: null, layerType: null })
-      }
+      onKeyDown={(e) => {
+        if (e.key === "Escape")
+          dispatch({ type: "SET_SELECTED_LAYER", id: null, layerType: null });
+        if (
+          (e.key === "Delete" || e.key === "Backspace") &&
+          state.selectedLayerId
+        ) {
+          if (state.selectedLayerType === "text")
+            dispatch({ type: "DELETE_TEXT_LAYER", id: state.selectedLayerId });
+          if (state.selectedLayerType === "sticker")
+            dispatch({
+              type: "DELETE_STICKER_LAYER",
+              id: state.selectedLayerId,
+            });
+        }
+      }}
       data-ocid="canvas.canvas_target"
     >
       {/* Rulers */}

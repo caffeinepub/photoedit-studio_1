@@ -181,6 +181,8 @@ type Action =
       layerType: "text" | "sticker" | null;
     }
   | { type: "UPDATE_TEXT_LAYER"; id: string; changes: Partial<TextLayer> }
+  | { type: "DELETE_TEXT_LAYER"; id: string }
+  | { type: "DELETE_STICKER_LAYER"; id: string }
   | {
       type: "UPDATE_STICKER_LAYER";
       id: string;
@@ -377,6 +379,24 @@ function reducer(state: EditorState, action: Action): EditorState {
         textLayers: state.textLayers.map((l) =>
           l.id === action.id ? { ...l, ...action.changes } : l,
         ),
+      };
+    case "DELETE_TEXT_LAYER":
+      return {
+        ...state,
+        textLayers: state.textLayers.filter((l) => l.id !== action.id),
+        selectedLayerId:
+          state.selectedLayerId === action.id ? null : state.selectedLayerId,
+        selectedLayerType:
+          state.selectedLayerId === action.id ? null : state.selectedLayerType,
+      };
+    case "DELETE_STICKER_LAYER":
+      return {
+        ...state,
+        stickerLayers: state.stickerLayers.filter((l) => l.id !== action.id),
+        selectedLayerId:
+          state.selectedLayerId === action.id ? null : state.selectedLayerId,
+        selectedLayerType:
+          state.selectedLayerId === action.id ? null : state.selectedLayerType,
       };
     case "UPDATE_STICKER_LAYER":
       return {
