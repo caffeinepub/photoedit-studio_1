@@ -92,6 +92,11 @@ export default function EffectsTab() {
     toast.success("Background applied!");
   }
 
+  function openBgRemoveTab() {
+    dispatch({ type: "SET_ACTIVE_PANEL", panel: "bg" });
+    toast.info("BG Remove tab khola gaya!");
+  }
+
   return (
     <div className="px-3 py-3 space-y-4 pb-20">
       <div>
@@ -136,10 +141,7 @@ export default function EffectsTab() {
           size="sm"
           className="w-full h-8 text-xs gap-1.5 mb-3"
           disabled={!state.imageUrl}
-          onClick={() => {
-            dispatch({ type: "SET_BACKGROUND", url: null });
-            toast.success("Background cleared (transparent)");
-          }}
+          onClick={openBgRemoveTab}
           data-ocid="effects.remove_bg.button"
         >
           🗑️ Remove Background

@@ -7,7 +7,7 @@ import {
 import { cn } from "@/lib/utils";
 import { ImagePlus, Minus, Plus, Upload, ZoomIn } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import BeforeAfterSlider from "./BeforeAfterSlider";
 
 const RULER_TICKS = Array.from({ length: 20 }, (_, i) => i);
@@ -135,23 +135,34 @@ function TextOverlay({ layer }: { layer: TextLayer }) {
   const scale = layer.scale ?? 1;
   const animClass = TEXT_ANIM_CLASS[layer.textAnimation ?? "none"] ?? "";
 
-  const baseStyle: React.CSSProperties = {
+  // Determine font weight based on style
+  const fontWeight: React.CSSProperties["fontWeight"] =
+    layer.fontStyle === "normal" ? "normal" : "bold";
+
+  // Outer wrapper: handles positioning ONLY — no text styling here
+  // so animation keyframes on inner span don't fight the translate(-50%,-50%)
+  const wrapperStyle: React.CSSProperties = {
     position: "absolute",
     left: `${pos.x}%`,
     top: `${pos.y}%`,
     transform: `translate(-50%, -50%) rotate(${rotation}deg) scale(${scale})`,
-    fontSize: layer.fontSize,
-    color: layer.color,
     cursor: "move",
     userSelect: "none",
-    whiteSpace: "nowrap",
-    fontFamily,
-    fontWeight: layer.fontStyle !== "normal" ? "bold" : "normal",
     touchAction: "none",
-    textAlign: layer.align ?? "center",
-    letterSpacing: layer.letterSpacing ? `${layer.letterSpacing}px` : undefined,
     outline: isSelected ? "2px dashed rgba(79,158,255,0.8)" : undefined,
     outlineOffset: isSelected ? "4px" : undefined,
+  };
+
+  // Inner span: all text visual styles + animation class
+  const innerStyle: React.CSSProperties = {
+    display: "inline-block",
+    whiteSpace: "nowrap",
+    fontSize: layer.fontSize,
+    color: layer.color,
+    fontFamily,
+    fontWeight,
+    textAlign: layer.align ?? "center",
+    letterSpacing: layer.letterSpacing ? `${layer.letterSpacing}px` : undefined,
     ...(layer.fontStyle === "neon" ? getNeonStyle(layer.color) : {}),
     ...(layer.fontStyle === "glitch" ? getGlitchStyle(layer.color) : {}),
     ...(layer.fontStyle === "gradient"
@@ -178,12 +189,14 @@ function TextOverlay({ layer }: { layer: TextLayer }) {
     <>
       <div
         ref={elemRef}
-        style={baseStyle}
-        className={animClass}
+        style={wrapperStyle}
         onMouseDown={onMouseDown}
         onTouchStart={onTouchStart}
       >
-        {layer.text}
+        {/* Inner span receives animation class + all text styles */}
+        <span style={innerStyle} className={animClass}>
+          {layer.text}
+        </span>
       </div>
       {isSelected && (
         <>
@@ -547,6 +560,9 @@ export default function CanvasStage() {
     null,
   );
   const imgContainerRef = useRef<HTMLDivElement>(null);
+  // Refs for fit-to-view calculation
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const editingImgRef = useRef<HTMLImageElement>(null);
   // Pinch zoom tracking
   const pinchRef = useRef<{ dist: number; zoom: number } | null>(null);
 
@@ -670,6 +686,23 @@ export default function CanvasStage() {
     }
   }
 
+  function handleFitToView() {
+    const container = canvasContainerRef.current;
+    const img = editingImgRef.current;
+    if (!container || !img || !img.naturalWidth || !img.naturalHeight) {
+      dispatch({ type: "SET_ZOOM", zoom: 1 });
+      return;
+    }
+    const containerW = container.clientWidth;
+    const containerH = container.clientHeight;
+    const zoom = Math.min(
+      (containerW - 32) / img.naturalWidth,
+      (containerH - 24) / img.naturalHeight,
+      1,
+    );
+    dispatch({ type: "SET_ZOOM", zoom: Math.max(0.1, zoom) });
+  }
+
   const filterStr = buildFilterString(
     state.adjustments,
     state.activeFilter,
@@ -687,6 +720,7 @@ export default function CanvasStage() {
 
   return (
     <div
+      ref={canvasContainerRef}
       className="flex-1 relative overflow-hidden dot-grid"
       style={{ backgroundColor: "oklch(0.13 0.016 222)" }}
       onDrop={handleDrop}
@@ -792,6 +826,7 @@ export default function CanvasStage() {
                   />
                 )}
                 <img
+                  ref={editingImgRef}
                   src={state.imageUrl}
                   alt="Editing"
                   className="max-w-full max-h-full block shadow-2xl relative"
@@ -971,7 +1006,7 @@ export default function CanvasStage() {
           </button>
           <button
             type="button"
-            onClick={() => dispatch({ type: "SET_ZOOM", zoom: 1 })}
+            onClick={handleFitToView}
             className="flex items-center justify-center w-8 h-8 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors border-l border-border"
             aria-label="Fit to view"
             title="Fit to view"

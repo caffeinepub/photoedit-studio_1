@@ -1,22 +1,197 @@
 import { Button } from "@/components/ui/button";
 import { useEditor } from "@/contexts/EditorContext";
 import { cn } from "@/lib/utils";
-import { Crown, Lock, Plus, Trash2, Video } from "lucide-react";
-import { useRef, useState } from "react";
+import {
+  Crown,
+  Film,
+  Lock,
+  Plus,
+  Sparkles,
+  StickerIcon,
+  Trash2,
+  Type,
+  Upload,
+  Video,
+  X,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 type Transition = "fade" | "zoom" | "slide";
+type Mode = "video" | "slideshow";
 
 const PHOTO_KEYS = ["p0", "p1", "p2", "p3", "p4", "p5", "p6", "p7"];
 
+const EFFECTS = [
+  "none",
+  "brightness(120%) contrast(110%)",
+  "sepia(80%)",
+  "hue-rotate(90deg)",
+] as const;
+
+const EFFECT_LABELS = ["None", "Vivid", "Sepia", "Hue"] as const;
+
 export default function ReelTab() {
   const { state, dispatch } = useEditor();
+  const [mode, setMode] = useState<Mode>("video");
+
+  // ---------- Video Editor State ----------
+  const [videoSrc, setVideoSrc] = useState<string | null>(null);
+  const [seekValue, setSeekValue] = useState(0);
+  const [effectIdx, setEffectIdx] = useState(0);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const videoFileRef = useRef<HTMLInputElement>(null);
+
+  // Drag state (imperative, not React state)
+  const dragTarget = useRef<HTMLElement | null>(null);
+  const dragOffsetX = useRef(0);
+  const dragOffsetY = useRef(0);
+
+  // ---------- Slideshow State ----------
   const [photos, setPhotos] = useState<string[]>([]);
   const [duration, setDuration] = useState(2);
   const [transition, setTransition] = useState<Transition>("fade");
   const [isCreating, setIsCreating] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // ---- Drag handlers (global while dragging) ----
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      if (!dragTarget.current || !wrapperRef.current) return;
+      const rect = wrapperRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left - dragOffsetX.current;
+      const y = e.clientY - rect.top - dragOffsetY.current;
+      dragTarget.current.style.left = `${x}px`;
+      dragTarget.current.style.top = `${y}px`;
+    }
+    function onMouseUp() {
+      dragTarget.current = null;
+    }
+    function onTouchMove(e: TouchEvent) {
+      if (!dragTarget.current || !wrapperRef.current) return;
+      const touch = e.touches[0];
+      const rect = wrapperRef.current.getBoundingClientRect();
+      const x = touch.clientX - rect.left - dragOffsetX.current;
+      const y = touch.clientY - rect.top - dragOffsetY.current;
+      dragTarget.current.style.left = `${x}px`;
+      dragTarget.current.style.top = `${y}px`;
+      e.preventDefault();
+    }
+    function onTouchEnd() {
+      dragTarget.current = null;
+    }
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("touchend", onTouchEnd);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
+    };
+  }, []);
+
+  function startDrag(el: HTMLElement, clientX: number, clientY: number) {
+    if (!wrapperRef.current) return;
+    const rect = wrapperRef.current.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    dragOffsetX.current = clientX - rect.left - (elRect.left - rect.left);
+    dragOffsetY.current = clientY - rect.top - (elRect.top - rect.top);
+    dragTarget.current = el;
+  }
+
+  function handleVideoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (videoSrc) URL.revokeObjectURL(videoSrc);
+    const url = URL.createObjectURL(file);
+    setVideoSrc(url);
+    setSeekValue(0);
+    setEffectIdx(0);
+    e.target.value = "";
+  }
+
+  function handleTimeUpdate() {
+    const v = videoRef.current;
+    if (!v || !Number.isFinite(v.duration)) return;
+    setSeekValue((v.currentTime / v.duration) * 100);
+  }
+
+  function handleSeek(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = Number(e.target.value);
+    setSeekValue(val);
+    const v = videoRef.current;
+    if (v && Number.isFinite(v.duration)) {
+      v.currentTime = (val / 100) * v.duration;
+    }
+  }
+
+  function cycleEffect() {
+    setEffectIdx((prev) => (prev + 1) % EFFECTS.length);
+  }
+
+  function addTextOverlay() {
+    if (!wrapperRef.current) return;
+    const el = document.createElement("div");
+    el.innerText = "Your Text";
+    el.style.position = "absolute";
+    el.style.left = "40px";
+    el.style.top = "40px";
+    el.style.color = "white";
+    el.style.fontSize = "20px";
+    el.style.fontWeight = "bold";
+    el.style.cursor = "move";
+    el.style.userSelect = "none";
+    el.style.textShadow = "0 1px 4px rgba(0,0,0,0.8)";
+    el.style.zIndex = "10";
+    el.dataset.overlay = "text";
+    el.addEventListener("mousedown", (e) => {
+      e.stopPropagation();
+      startDrag(el, e.clientX, e.clientY);
+    });
+    el.addEventListener("touchstart", (e) => {
+      e.stopPropagation();
+      startDrag(el, e.touches[0].clientX, e.touches[0].clientY);
+    });
+    wrapperRef.current.appendChild(el);
+  }
+
+  function addStickerOverlay() {
+    if (!wrapperRef.current) return;
+    const el = document.createElement("img");
+    el.src =
+      "https://cdn.jsdelivr.net/gh/twitter/twemoji/assets/72x72/1f525.png";
+    el.style.position = "absolute";
+    el.style.left = "60px";
+    el.style.top = "60px";
+    el.style.width = "60px";
+    el.style.cursor = "move";
+    el.style.userSelect = "none";
+    el.style.zIndex = "10";
+    el.dataset.overlay = "sticker";
+    el.addEventListener("mousedown", (e) => {
+      e.stopPropagation();
+      startDrag(el, e.clientX, e.clientY);
+    });
+    el.addEventListener("touchstart", (e) => {
+      e.stopPropagation();
+      startDrag(el, e.touches[0].clientX, e.touches[0].clientY);
+    });
+    wrapperRef.current.appendChild(el);
+  }
+
+  function clearOverlays() {
+    if (!wrapperRef.current) return;
+    const overlays =
+      wrapperRef.current.querySelectorAll<HTMLElement>("[data-overlay]");
+    for (const el of Array.from(overlays)) {
+      el.remove();
+    }
+  }
+
+  // ---- Slideshow handlers ----
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []);
     const remaining = 8 - photos.length;
@@ -148,7 +323,7 @@ export default function ReelTab() {
   }
 
   return (
-    <div className="px-3 py-3 space-y-4 relative pb-20">
+    <div className="px-3 py-3 space-y-3 relative pb-20">
       {/* Premium lock overlay */}
       {!state.isPremium && (
         <div
@@ -187,122 +362,306 @@ export default function ReelTab() {
         </div>
       )}
 
-      <div>
-        <p className="text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
-          Photos ({photos.length}/8)
-          <span
-            className="ml-2 text-[10px] normal-case font-normal px-1.5 py-0.5 rounded"
-            style={{ background: "oklch(0.55 0.18 60)", color: "white" }}
-          >
-            <Crown className="w-2.5 h-2.5 inline mr-0.5" />
-            PRO
-          </span>
-        </p>
-        <div className="grid grid-cols-4 gap-1.5 mb-2">
-          {photos.map((url, i) => (
-            <div
-              key={PHOTO_KEYS[i]}
-              className="relative aspect-square rounded overflow-hidden border border-border group"
-              data-ocid={`reel.item.${i + 1}`}
-            >
-              <img
-                src={url}
-                alt={`Slide ${i + 1}`}
-                className="w-full h-full object-cover"
-              />
-              <button
-                type="button"
-                onClick={() => removePhoto(i)}
-                className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/70 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                data-ocid={`reel.delete_button.${i + 1}`}
-              >
-                <Trash2 className="w-2.5 h-2.5 text-white" />
-              </button>
-            </div>
-          ))}
-          {photos.length < 8 && (
+      {/* Mode Toggle */}
+      <div className="flex gap-1.5">
+        <button
+          type="button"
+          onClick={() => setMode("video")}
+          className={cn(
+            "flex-1 h-8 rounded text-xs border font-medium transition-colors flex items-center justify-center gap-1.5",
+            mode === "video"
+              ? "border-primary bg-primary/20 text-primary"
+              : "border-border bg-card text-muted-foreground",
+          )}
+          data-ocid="reel.video_editor.tab"
+        >
+          <Film className="w-3.5 h-3.5" />
+          Video Editor
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("slideshow")}
+          className={cn(
+            "flex-1 h-8 rounded text-xs border font-medium transition-colors flex items-center justify-center gap-1.5",
+            mode === "slideshow"
+              ? "border-primary bg-primary/20 text-primary"
+              : "border-border bg-card text-muted-foreground",
+          )}
+          data-ocid="reel.slideshow.tab"
+        >
+          <Video className="w-3.5 h-3.5" />
+          Slideshow
+        </button>
+      </div>
+
+      {/* ===== VIDEO EDITOR MODE ===== */}
+      {mode === "video" && (
+        <div className="space-y-3">
+          {/* Upload area / video preview */}
+          {!videoSrc ? (
             <button
               type="button"
-              onClick={() => fileRef.current?.click()}
-              className="aspect-square rounded border border-dashed border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors"
-              data-ocid="reel.upload_button"
+              onClick={() => videoFileRef.current?.click()}
+              className="w-full rounded-lg border-2 border-dashed border-border bg-card/50 flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors"
+              data-ocid="reel.video.upload_button"
             >
-              <Plus className="w-5 h-5" />
+              <Upload className="w-8 h-8" />
+              <span className="text-xs font-medium">Tap to upload video</span>
+              <span className="text-[10px] opacity-60">
+                MP4, WebM, MOV supported
+              </span>
+            </button>
+          ) : (
+            <div className="space-y-2">
+              {/* Video wrapper — overlays sit inside here */}
+              <div
+                ref={wrapperRef}
+                className="relative rounded-lg overflow-hidden bg-black w-full"
+                style={{ minHeight: "180px" }}
+              >
+                <video
+                  ref={videoRef}
+                  src={videoSrc}
+                  controls
+                  playsInline
+                  onTimeUpdate={handleTimeUpdate}
+                  className="w-full rounded-lg"
+                  style={{ filter: EFFECTS[effectIdx], display: "block" }}
+                  data-ocid="reel.video.canvas_target"
+                >
+                  <track kind="captions" />
+                </video>
+              </div>
+
+              {/* Seek bar */}
+              <div className="px-0.5">
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={0.1}
+                  value={seekValue}
+                  onChange={handleSeek}
+                  className="w-full accent-primary h-1.5 cursor-pointer"
+                  data-ocid="reel.seek.input"
+                />
+              </div>
+
+              {/* Change video button */}
+              <button
+                type="button"
+                onClick={() => videoFileRef.current?.click()}
+                className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+                data-ocid="reel.video.secondary_button"
+              >
+                <Upload className="w-3 h-3" />
+                Change video
+              </button>
+            </div>
+          )}
+
+          <input
+            ref={videoFileRef}
+            type="file"
+            accept="video/*"
+            className="hidden"
+            onChange={handleVideoUpload}
+          />
+
+          {/* Tool buttons */}
+          <div>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 font-semibold">
+              Overlay Tools
+            </p>
+            <div className="grid grid-cols-3 gap-1.5">
+              <button
+                type="button"
+                onClick={addTextOverlay}
+                disabled={!videoSrc}
+                className={cn(
+                  "h-10 rounded border text-xs flex flex-col items-center justify-center gap-0.5 transition-colors",
+                  videoSrc
+                    ? "border-border bg-card text-foreground hover:border-primary/50 hover:bg-primary/10"
+                    : "border-border/40 bg-card/30 text-muted-foreground/40 cursor-not-allowed",
+                )}
+                data-ocid="reel.text.button"
+              >
+                <Type className="w-4 h-4" />
+                <span>Text</span>
+              </button>
+              <button
+                type="button"
+                onClick={addStickerOverlay}
+                disabled={!videoSrc}
+                className={cn(
+                  "h-10 rounded border text-xs flex flex-col items-center justify-center gap-0.5 transition-colors",
+                  videoSrc
+                    ? "border-border bg-card text-foreground hover:border-primary/50 hover:bg-primary/10"
+                    : "border-border/40 bg-card/30 text-muted-foreground/40 cursor-not-allowed",
+                )}
+                data-ocid="reel.sticker.button"
+              >
+                <StickerIcon className="w-4 h-4" />
+                <span>Sticker</span>
+              </button>
+              <button
+                type="button"
+                onClick={cycleEffect}
+                disabled={!videoSrc}
+                className={cn(
+                  "h-10 rounded border text-xs flex flex-col items-center justify-center gap-0.5 transition-colors",
+                  videoSrc && effectIdx > 0
+                    ? "border-primary bg-primary/20 text-primary"
+                    : videoSrc
+                      ? "border-border bg-card text-foreground hover:border-primary/50 hover:bg-primary/10"
+                      : "border-border/40 bg-card/30 text-muted-foreground/40 cursor-not-allowed",
+                )}
+                data-ocid="reel.effect.button"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>{EFFECT_LABELS[effectIdx]}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Clear overlays */}
+          {videoSrc && (
+            <button
+              type="button"
+              onClick={clearOverlays}
+              className="w-full h-7 rounded border border-border/60 text-[11px] text-muted-foreground hover:text-destructive hover:border-destructive/40 transition-colors flex items-center justify-center gap-1.5"
+              data-ocid="reel.clear.delete_button"
+            >
+              <X className="w-3 h-3" />
+              Clear overlays
             </button>
           )}
         </div>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          onChange={handleFileChange}
-        />
-      </div>
+      )}
 
-      <div className="grid grid-cols-3 gap-2">
-        <div>
-          <p className="text-[11px] text-muted-foreground mb-1">
-            Duration/slide
-          </p>
-          <div className="flex gap-1">
-            {[1, 2, 3].map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setDuration(s)}
-                className={cn(
-                  "flex-1 h-7 rounded text-xs border transition-colors",
-                  duration === s
-                    ? "border-primary bg-primary/20 text-primary"
-                    : "border-border bg-card text-muted-foreground",
-                )}
-                data-ocid="reel.duration.toggle"
+      {/* ===== SLIDESHOW MODE ===== */}
+      {mode === "slideshow" && (
+        <div className="space-y-3">
+          <div>
+            <p className="text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
+              Photos ({photos.length}/8)
+              <span
+                className="ml-2 text-[10px] normal-case font-normal px-1.5 py-0.5 rounded"
+                style={{ background: "oklch(0.55 0.18 60)", color: "white" }}
               >
-                {s}s
-              </button>
-            ))}
+                <Crown className="w-2.5 h-2.5 inline mr-0.5" />
+                PRO
+              </span>
+            </p>
+            <div className="grid grid-cols-4 gap-1.5 mb-2">
+              {photos.map((url, i) => (
+                <div
+                  key={PHOTO_KEYS[i]}
+                  className="relative aspect-square rounded overflow-hidden border border-border group"
+                  data-ocid={`reel.item.${i + 1}`}
+                >
+                  <img
+                    src={url}
+                    alt={`Slide ${i + 1}`}
+                    className="w-full h-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removePhoto(i)}
+                    className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/70 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    data-ocid={`reel.delete_button.${i + 1}`}
+                  >
+                    <Trash2 className="w-2.5 h-2.5 text-white" />
+                  </button>
+                </div>
+              ))}
+              {photos.length < 8 && (
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  className="aspect-square rounded border border-dashed border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors"
+                  data-ocid="reel.upload_button"
+                >
+                  <Plus className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={handleFileChange}
+            />
           </div>
-        </div>
-        <div className="col-span-2">
-          <p className="text-[11px] text-muted-foreground mb-1">Transition</p>
-          <div className="flex gap-1">
-            {(["fade", "zoom", "slide"] as Transition[]).map((tr) => (
-              <button
-                key={tr}
-                type="button"
-                onClick={() => setTransition(tr)}
-                className={cn(
-                  "flex-1 h-7 rounded text-xs border transition-colors capitalize",
-                  transition === tr
-                    ? "border-primary bg-primary/20 text-primary"
-                    : "border-border bg-card text-muted-foreground",
-                )}
-                data-ocid={`reel.${tr}.toggle`}
-              >
-                {tr}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
 
-      <Button
-        type="button"
-        size="sm"
-        className="w-full h-8 text-xs gap-1.5 bg-primary text-primary-foreground"
-        onClick={createReel}
-        disabled={photos.length === 0 || isCreating}
-        data-ocid="reel.primary_button"
-      >
-        {isCreating ? (
-          <span className="animate-spin">⏳</span>
-        ) : (
-          <Video className="w-3.5 h-3.5" />
-        )}
-        {isCreating ? "Creating..." : "Create Reel"}
-      </Button>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <p className="text-[11px] text-muted-foreground mb-1">
+                Duration/slide
+              </p>
+              <div className="flex gap-1">
+                {[1, 2, 3].map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setDuration(s)}
+                    className={cn(
+                      "flex-1 h-7 rounded text-xs border transition-colors",
+                      duration === s
+                        ? "border-primary bg-primary/20 text-primary"
+                        : "border-border bg-card text-muted-foreground",
+                    )}
+                    data-ocid="reel.duration.toggle"
+                  >
+                    {s}s
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="col-span-2">
+              <p className="text-[11px] text-muted-foreground mb-1">
+                Transition
+              </p>
+              <div className="flex gap-1">
+                {(["fade", "zoom", "slide"] as Transition[]).map((tr) => (
+                  <button
+                    key={tr}
+                    type="button"
+                    onClick={() => setTransition(tr)}
+                    className={cn(
+                      "flex-1 h-7 rounded text-xs border transition-colors capitalize",
+                      transition === tr
+                        ? "border-primary bg-primary/20 text-primary"
+                        : "border-border bg-card text-muted-foreground",
+                    )}
+                    data-ocid={`reel.${tr}.toggle`}
+                  >
+                    {tr}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <Button
+            type="button"
+            size="sm"
+            className="w-full h-8 text-xs gap-1.5 bg-primary text-primary-foreground"
+            onClick={createReel}
+            disabled={photos.length === 0 || isCreating}
+            data-ocid="reel.primary_button"
+          >
+            {isCreating ? (
+              <span className="animate-spin">⏳</span>
+            ) : (
+              <Video className="w-3.5 h-3.5" />
+            )}
+            {isCreating ? "Creating..." : "Create Reel"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
