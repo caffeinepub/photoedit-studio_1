@@ -19,6 +19,7 @@ import {
 import { buildFilterString, useEditor } from "@/contexts/EditorContext";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useCreateProject } from "@/hooks/useQueries";
+import type { VoiceAction } from "@/hooks/useVoiceCommands";
 import { cn } from "@/lib/utils";
 import {
   Camera,
@@ -34,6 +35,7 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import VoiceCommandButton from "./VoiceCommandButton";
 
 function generateId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -59,6 +61,7 @@ const VIRAL_TEXTS = [
 const VIRAL_STICKERS = ["🔥", "✨", "💯", "👑", "🎉", "😍", "🌟", "⚡"];
 const VIRAL_FONTS = ["poppins", "orbitron", "bebas"] as const;
 const VIRAL_STYLES = ["neon", "gradient", "shadow"] as const;
+const RANDOM_STICKERS = ["🔥", "✨", "💯", "👑", "😍"];
 
 const FONT_MAP: Record<string, string> = {
   default: "sans-serif",
@@ -107,7 +110,6 @@ export default function EditorHeader() {
     }
     setIsDownloading(true);
     try {
-      // Load base image
       const baseImg = await new Promise<HTMLImageElement>((resolve, reject) => {
         const img = new Image();
         img.crossOrigin = "anonymous";
@@ -122,7 +124,6 @@ export default function EditorHeader() {
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Canvas not supported");
 
-      // Apply CSS filter via canvas filter API
       const filterStr = buildFilterString(
         state.adjustments,
         state.activeFilter,
@@ -132,7 +133,6 @@ export default function EditorHeader() {
         ctx.filter = filterStr;
       }
 
-      // Draw base image (handle flip transforms)
       ctx.save();
       if (state.flipH || state.flipV) {
         ctx.translate(
@@ -143,18 +143,14 @@ export default function EditorHeader() {
       }
       ctx.drawImage(baseImg, 0, 0);
       ctx.restore();
-
-      // Reset filter for overlays
       ctx.filter = "none";
 
-      // Bake sticker layers
       for (const layer of state.stickerLayers) {
         const px = (layer.x / 100) * canvas.width;
         const py = (layer.y / 100) * canvas.height;
-        const sz = layer.size * (canvas.width / 500); // scale relative to canvas
+        const sz = layer.size * (canvas.width / 500);
 
         if (layer.isCustom) {
-          // Image sticker
           try {
             const stickerImg = await new Promise<HTMLImageElement>(
               (resolve, reject) => {
@@ -178,7 +174,6 @@ export default function EditorHeader() {
             // Skip sticker if image load fails
           }
         } else {
-          // Emoji sticker
           ctx.save();
           ctx.font = `${sz}px serif`;
           ctx.textAlign = "center";
@@ -194,7 +189,6 @@ export default function EditorHeader() {
         }
       }
 
-      // Bake text layers
       for (const layer of state.textLayers) {
         const px = (layer.x / 100) * canvas.width;
         const py = (layer.y / 100) * canvas.height;
@@ -266,7 +260,6 @@ export default function EditorHeader() {
         ctx.restore();
       }
 
-      // Export as PNG (converts JPG→PNG automatically)
       const pngData = canvas.toDataURL("image/png");
       const link = document.createElement("a");
       link.download = "edited-photo.png";
@@ -358,6 +351,125 @@ export default function EditorHeader() {
 
     dispatch({ type: "PUSH_HISTORY" });
     toast.success("Auto Viral Edit applied! 🔥 Ready for Instagram!");
+  }
+
+  function handleVoiceCommand(action: VoiceAction | null) {
+    if (!action) {
+      toast.error("Samajh nahi aaya, dobara bolo 🎤");
+      return;
+    }
+
+    switch (action.type) {
+      case "SET_ADJUSTMENT": {
+        const current = state.adjustments[action.key] ?? 0;
+        const next = Math.max(-100, Math.min(100, current + action.value));
+        dispatch({ type: "SET_ADJUSTMENT", key: action.key, value: next });
+        const dir = action.value > 0 ? "badha diya" : "kam kar diya";
+        const keyLabel =
+          action.key === "brightness"
+            ? "Brightness"
+            : action.key === "contrast"
+              ? "Contrast"
+              : "Saturation";
+        toast.success(`${keyLabel} ${dir}! 🎤`);
+        break;
+      }
+      case "SET_FILTER":
+        dispatch({ type: "SET_FILTER", filter: action.filter });
+        toast.success(`${action.filter} filter laga diya! 🎬`);
+        break;
+      case "SET_SPECIAL_EFFECT":
+        dispatch({ type: "SET_SPECIAL_EFFECT", effect: action.effect });
+        toast.success(`${action.effect} effect laga diya! ✨`);
+        break;
+      case "UNDO":
+        dispatch({ type: "UNDO" });
+        toast.success("Undo ho gaya! ↩️");
+        break;
+      case "RESET":
+        dispatch({ type: "RESET" });
+        toast.success("Reset ho gaya! 🔄");
+        break;
+      case "TOGGLE_BEFORE_AFTER":
+        dispatch({ type: "TOGGLE_BEFORE_AFTER" });
+        toast.success("Before/After toggle ho gaya! 👁️");
+        break;
+      case "ROTATE_90":
+        dispatch({ type: "ROTATE_90", dir: action.dir });
+        toast.success("Rotate ho gaya! 🔄");
+        break;
+      case "FLIP_H":
+        dispatch({ type: "FLIP_H" });
+        toast.success("Flip ho gaya! ↔️");
+        break;
+      case "CUSTOM":
+        handleCustomCommand(action.command);
+        break;
+    }
+  }
+
+  function handleCustomCommand(command: string) {
+    switch (command) {
+      case "ADD_NEON_TEXT": {
+        const neonLayer = {
+          id: `voice-neon-${Date.now()}`,
+          text: "Neon ✨",
+          fontStyle: "neon" as const,
+          fontFamily: "orbitron" as const,
+          color: "#fff",
+          fontSize: 48,
+          x: 50,
+          y: 50,
+          align: "center" as const,
+        };
+        dispatch({
+          type: "SET_TEXT_LAYERS",
+          layers: [...state.textLayers, neonLayer],
+        });
+        toast.success("Neon text add ho gaya! 🌟");
+        break;
+      }
+      case "ADD_TEXT": {
+        const textLayer = {
+          id: `voice-text-${Date.now()}`,
+          text: "Your Text",
+          fontStyle: "normal" as const,
+          fontFamily: "poppins" as const,
+          color: "#ffffff",
+          fontSize: 36,
+          x: 50,
+          y: 50,
+          align: "center" as const,
+        };
+        dispatch({
+          type: "SET_TEXT_LAYERS",
+          layers: [...state.textLayers, textLayer],
+        });
+        toast.success("Text add ho gaya! ✍️");
+        break;
+      }
+      case "ADD_STICKER": {
+        const emoji =
+          RANDOM_STICKERS[Math.floor(Math.random() * RANDOM_STICKERS.length)];
+        const stickerLayer = {
+          id: `voice-sticker-${Date.now()}`,
+          content: emoji,
+          isCustom: false,
+          x: 30 + Math.random() * 40,
+          y: 20 + Math.random() * 60,
+          size: 56,
+        };
+        dispatch({
+          type: "SET_STICKER_LAYERS",
+          layers: [...state.stickerLayers, stickerLayer],
+        });
+        toast.success(`Sticker ${emoji} add ho gaya! 😎`);
+        break;
+      }
+      case "AUTO_VIRAL":
+        autoViralEdit();
+        break;
+    }
   }
 
   return (
@@ -503,6 +615,9 @@ export default function EditorHeader() {
               <TooltipContent>Before / After</TooltipContent>
             </Tooltip>
           )}
+
+          {/* Voice Command Button */}
+          <VoiceCommandButton onCommand={handleVoiceCommand} />
         </TooltipProvider>
       </div>
 
