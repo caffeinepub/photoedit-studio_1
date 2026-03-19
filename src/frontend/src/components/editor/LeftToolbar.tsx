@@ -99,10 +99,10 @@ export default function LeftToolbar() {
             variant="ghost"
             size="icon"
             className={cn(
-              "rounded-md transition-colors",
+              "rounded-md transition-all",
               isMobile ? "w-8 h-8" : "w-9 h-9",
               isActive
-                ? "bg-primary/20 text-primary border border-primary/30"
+                ? "bg-primary/20 text-primary border border-primary/30 glow-primary"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted",
             )}
             onClick={
@@ -129,7 +129,7 @@ export default function LeftToolbar() {
       <TooltipProvider delayDuration={300}>
         <div
           className="absolute bottom-0 left-0 right-0 z-20 flex items-center justify-center gap-1 px-2 py-1.5 border-t border-border overflow-x-auto scrollbar-none"
-          style={{ backgroundColor: "oklch(0.19 0.022 222)" }}
+          style={{ backgroundColor: "oklch(0.13 0.010 20)" }}
           data-ocid="toolbar.panel"
         >
           {allItems.map(renderBtn)}
@@ -146,7 +146,7 @@ export default function LeftToolbar() {
     <TooltipProvider delayDuration={300}>
       <aside
         className="flex flex-col items-center py-3 gap-1 border-r border-border flex-shrink-0"
-        style={{ width: 56, backgroundColor: "oklch(0.19 0.022 222)" }}
+        style={{ width: 56, backgroundColor: "oklch(0.13 0.010 20)" }}
         data-ocid="toolbar.panel"
       >
         {tools.map(renderBtn)}

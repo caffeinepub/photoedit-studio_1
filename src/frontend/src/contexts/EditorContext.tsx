@@ -11,6 +11,7 @@ export type Tool = "select" | "crop" | "rotate" | "fliph" | "flipv";
 export type FilterPreset =
   | "normal"
   | "cinematic"
+  | "cinematiccold"
   | "vivid"
   | "bw"
   | "warm"
@@ -18,7 +19,19 @@ export type FilterPreset =
   | "fade"
   | "chrome"
   | "vintage"
-  | "hdr";
+  | "hdr"
+  | "matte"
+  | "fuji"
+  | "moody"
+  | "lomo"
+  | "clarendon"
+  | "juno"
+  | "lark"
+  | "moon"
+  | "gaminggreen"
+  | "nightvision";
+
+export type TextAnimation = "none" | "typing" | "glow" | "bounce" | "fadein";
 
 export interface Adjustments {
   brightness: number;
@@ -30,6 +43,8 @@ export interface Adjustments {
   hue: number;
   grayscale: number;
   sepia: number;
+  vignette: number;
+  grain: number;
 }
 
 export interface CropRect {
@@ -64,6 +79,11 @@ export interface TextLayer {
   fontSize: number;
   x: number;
   y: number;
+  align?: "left" | "center" | "right";
+  letterSpacing?: number;
+  textAnimation?: TextAnimation;
+  rotation?: number;
+  scale?: number;
 }
 
 export interface StickerLayer {
@@ -73,6 +93,8 @@ export interface StickerLayer {
   x: number;
   y: number;
   size: number;
+  rotation?: number;
+  scale?: number;
 }
 
 const DEFAULT_ADJUSTMENTS: Adjustments = {
@@ -85,6 +107,8 @@ const DEFAULT_ADJUSTMENTS: Adjustments = {
   hue: 0,
   grayscale: 0,
   sepia: 0,
+  vignette: 0,
+  grain: 0,
 };
 
 interface HistoryEntry {
@@ -119,6 +143,8 @@ export interface EditorState {
   backgroundUrl: string | null;
   specialEffect: string | null;
   bgColor: string | null;
+  selectedLayerId: string | null;
+  selectedLayerType: "text" | "sticker" | null;
 }
 
 type Action =
@@ -148,7 +174,18 @@ type Action =
   | { type: "SET_PREMIUM"; value: boolean }
   | { type: "SET_BACKGROUND"; url: string | null }
   | { type: "SET_SPECIAL_EFFECT"; effect: string | null }
-  | { type: "SET_BG_COLOR"; color: string | null };
+  | { type: "SET_BG_COLOR"; color: string | null }
+  | {
+      type: "SET_SELECTED_LAYER";
+      id: string | null;
+      layerType: "text" | "sticker" | null;
+    }
+  | { type: "UPDATE_TEXT_LAYER"; id: string; changes: Partial<TextLayer> }
+  | {
+      type: "UPDATE_STICKER_LAYER";
+      id: string;
+      changes: Partial<StickerLayer>;
+    };
 
 const INITIAL_STATE: EditorState = {
   imageUrl: null,
@@ -174,6 +211,8 @@ const INITIAL_STATE: EditorState = {
   backgroundUrl: null,
   specialEffect: null,
   bgColor: null,
+  selectedLayerId: null,
+  selectedLayerType: null,
 };
 
 function snapshotState(state: EditorState): HistoryEntry {
@@ -326,6 +365,26 @@ function reducer(state: EditorState, action: Action): EditorState {
       return { ...state, specialEffect: action.effect };
     case "SET_BG_COLOR":
       return { ...state, bgColor: action.color };
+    case "SET_SELECTED_LAYER":
+      return {
+        ...state,
+        selectedLayerId: action.id,
+        selectedLayerType: action.layerType,
+      };
+    case "UPDATE_TEXT_LAYER":
+      return {
+        ...state,
+        textLayers: state.textLayers.map((l) =>
+          l.id === action.id ? { ...l, ...action.changes } : l,
+        ),
+      };
+    case "UPDATE_STICKER_LAYER":
+      return {
+        ...state,
+        stickerLayers: state.stickerLayers.map((l) =>
+          l.id === action.id ? { ...l, ...action.changes } : l,
+        ),
+      };
     default:
       return state;
   }
@@ -345,7 +404,9 @@ const EditorContext = createContext<EditorContextValue | null>(null);
 
 export const FILTER_DEFINITIONS: Record<FilterPreset, string> = {
   normal: "",
-  cinematic: "contrast(1.1) brightness(0.9) saturate(0.7) sepia(0.1)",
+  cinematic: "contrast(1.15) brightness(0.88) saturate(0.65) sepia(0.12)",
+  cinematiccold:
+    "contrast(1.25) brightness(0.92) saturate(0.75) hue-rotate(-20deg)",
   vivid: "saturate(1.6) contrast(1.1) brightness(1.05)",
   bw: "grayscale(1) contrast(1.1)",
   warm: "sepia(0.25) saturate(1.3) brightness(1.05)",
@@ -354,7 +415,18 @@ export const FILTER_DEFINITIONS: Record<FilterPreset, string> = {
   chrome: "contrast(1.25) saturate(1.4) brightness(1.02)",
   vintage:
     "sepia(0.45) contrast(0.85) brightness(0.95) saturate(0.75) hue-rotate(-5deg)",
-  hdr: "contrast(1.35) saturate(1.55) brightness(1.05)",
+  hdr: "contrast(1.45) saturate(1.65) brightness(1.05) sharpness(1.2)",
+  matte: "brightness(1.05) contrast(0.9) saturate(0.8) sepia(0.1)",
+  fuji: "saturate(1.2) brightness(1.02) contrast(0.95) hue-rotate(5deg)",
+  moody: "brightness(0.85) contrast(1.2) saturate(0.7) hue-rotate(-10deg)",
+  lomo: "contrast(1.3) saturate(1.4) brightness(0.9) sepia(0.15)",
+  clarendon: "contrast(1.2) saturate(1.5) brightness(1.03)",
+  juno: "sepia(0.08) contrast(1.1) saturate(1.3) brightness(1.05) hue-rotate(5deg)",
+  lark: "brightness(1.1) saturate(0.9) contrast(0.95) hue-rotate(3deg)",
+  moon: "grayscale(1) contrast(1.2) brightness(1.05)",
+  gaminggreen:
+    "hue-rotate(100deg) saturate(1.6) contrast(1.35) brightness(0.95)",
+  nightvision: "hue-rotate(80deg) saturate(1.8) contrast(1.5) brightness(0.9)",
 };
 
 const SPECIAL_EFFECT_FILTERS: Record<string, string> = {

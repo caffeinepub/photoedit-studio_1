@@ -148,7 +148,7 @@ export default function ReelTab() {
   }
 
   return (
-    <div className="px-3 py-3 space-y-4 relative">
+    <div className="px-3 py-3 space-y-4 relative pb-20">
       {/* Premium lock overlay */}
       {!state.isPremium && (
         <div

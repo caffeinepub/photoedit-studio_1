@@ -93,7 +93,7 @@ export default function EffectsTab() {
   }
 
   return (
-    <div className="px-3 py-3 space-y-4">
+    <div className="px-3 py-3 space-y-4 pb-20">
       <div>
         <p className="text-xs font-semibold text-foreground uppercase tracking-wider mb-3">
           Face & Photo Effects

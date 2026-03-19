@@ -14,25 +14,87 @@ import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { type Adjustments, useEditor } from "@/contexts/EditorContext";
 import { cn } from "@/lib/utils";
-import { ChevronDown, Sparkles, Wand2 } from "lucide-react";
+import { ChevronDown, Wand2 } from "lucide-react";
 import { useState } from "react";
 
-const ADJUSTMENT_FIELDS: {
-  key: keyof Adjustments;
+type AdjGroup = {
   label: string;
-  min: number;
-  max: number;
-  step: number;
-}[] = [
-  { key: "brightness", label: "Brightness", min: -100, max: 100, step: 1 },
-  { key: "contrast", label: "Contrast", min: -100, max: 100, step: 1 },
-  { key: "saturation", label: "Saturation", min: -100, max: 100, step: 1 },
-  { key: "blur", label: "Blur", min: 0, max: 20, step: 0.5 },
-  { key: "sharpness", label: "Sharpness", min: 0, max: 10, step: 0.1 },
-  { key: "temperature", label: "Temperature", min: -100, max: 100, step: 1 },
-  { key: "hue", label: "Hue Rotate", min: -180, max: 180, step: 1 },
-  { key: "grayscale", label: "Grayscale", min: 0, max: 100, step: 1 },
-  { key: "sepia", label: "Sepia", min: 0, max: 100, step: 1 },
+  fields: {
+    key: keyof Adjustments;
+    label: string;
+    min: number;
+    max: number;
+    step: number;
+    unit?: string;
+  }[];
+};
+
+const ADJUSTMENT_GROUPS: AdjGroup[] = [
+  {
+    label: "Light",
+    fields: [
+      { key: "brightness", label: "Brightness", min: -100, max: 100, step: 1 },
+      { key: "contrast", label: "Contrast", min: -100, max: 100, step: 1 },
+    ],
+  },
+  {
+    label: "Color",
+    fields: [
+      { key: "saturation", label: "Saturation", min: -100, max: 100, step: 1 },
+      {
+        key: "temperature",
+        label: "Temperature",
+        min: -100,
+        max: 100,
+        step: 1,
+      },
+      {
+        key: "hue",
+        label: "Hue Rotate",
+        min: -180,
+        max: 180,
+        step: 1,
+        unit: "°",
+      },
+    ],
+  },
+  {
+    label: "Detail",
+    fields: [
+      { key: "blur", label: "Blur", min: 0, max: 20, step: 0.5, unit: "px" },
+      { key: "sharpness", label: "Sharpness", min: 0, max: 10, step: 0.1 },
+      {
+        key: "grayscale",
+        label: "Grayscale",
+        min: 0,
+        max: 100,
+        step: 1,
+        unit: "%",
+      },
+      { key: "sepia", label: "Sepia", min: 0, max: 100, step: 1, unit: "%" },
+    ],
+  },
+  {
+    label: "Texture",
+    fields: [
+      {
+        key: "vignette",
+        label: "Vignette",
+        min: 0,
+        max: 100,
+        step: 1,
+        unit: "%",
+      },
+      {
+        key: "grain",
+        label: "Film Grain",
+        min: 0,
+        max: 100,
+        step: 1,
+        unit: "%",
+      },
+    ],
+  },
 ];
 
 const CROP_ASPECTS = ["free", "1:1", "16:9", "4:3", "3:2"] as const;
@@ -42,13 +104,15 @@ const PRESETS = [
   { key: "bw", label: "B&W", emoji: "⚫" },
   { key: "cool", label: "Cool", emoji: "❄️" },
   { key: "warm", label: "Warm", emoji: "🔆" },
+  { key: "moody", label: "Moody", emoji: "🌑" },
+  { key: "hdr", label: "HDR", emoji: "⚡" },
 ] as const;
 
 const SPECIAL_EFFECTS = [
-  { key: "blur", label: "Blur" },
-  { key: "sharp", label: "Sharp" },
-  { key: "glow", label: "Glow" },
-  { key: "invert", label: "Invert" },
+  { key: "blur", label: "Blur", emoji: "💨" },
+  { key: "sharp", label: "Sharp", emoji: "🔪" },
+  { key: "glow", label: "Glow", emoji: "✨" },
+  { key: "invert", label: "Invert", emoji: "🔄" },
 ] as const;
 
 function SectionHeader({ label, open }: { label: string; open: boolean }) {
@@ -70,20 +134,44 @@ function SectionHeader({ label, open }: { label: string; open: boolean }) {
   );
 }
 
+function formatValue(key: keyof Adjustments, value: number): string {
+  if (key === "blur") return `${value.toFixed(1)}px`;
+  if (key === "sharpness") return value.toFixed(1);
+  if (key === "hue") return `${value}°`;
+  if (
+    key === "grayscale" ||
+    key === "sepia" ||
+    key === "vignette" ||
+    key === "grain"
+  )
+    return `${value}%`;
+  if (value > 0) return `+${value}`;
+  return `${value}`;
+}
+
 export default function AdjustTab() {
   const { state, dispatch } = useEditor();
-  const [adjOpen, setAdjOpen] = useState(true);
-  const [rotOpen, setRotOpen] = useState(false);
-  const [presetsOpen, setPresetsOpen] = useState(true);
-  const [effectsOpen, setEffectsOpen] = useState(true);
-  const [bgColorOpen, setBgColorOpen] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    Light: true,
+    Color: true,
+    Detail: false,
+    Texture: false,
+    "Quick Presets": true,
+    "Special Effects": false,
+    "Background Color": false,
+    "Rotation & Crop": false,
+  });
+
+  function toggle(label: string) {
+    setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
+  }
 
   function handleAdjChange(key: keyof Adjustments, value: number[]) {
     dispatch({ type: "SET_ADJUSTMENT", key, value: value[0] });
   }
 
   return (
-    <div className="px-3 py-2 space-y-1">
+    <div className="px-3 py-2 space-y-1 pb-20">
       {/* Auto Edit button */}
       <button
         type="button"
@@ -96,10 +184,16 @@ export default function AdjustTab() {
       </button>
 
       {/* Quick Presets */}
-      <Collapsible open={presetsOpen} onOpenChange={setPresetsOpen}>
-        <SectionHeader label="Quick Presets" open={presetsOpen} />
+      <Collapsible
+        open={openGroups["Quick Presets"]}
+        onOpenChange={() => toggle("Quick Presets")}
+      >
+        <SectionHeader
+          label="Quick Presets"
+          open={!!openGroups["Quick Presets"]}
+        />
         <CollapsibleContent className="pb-3">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-1.5">
             {PRESETS.map(({ key, label, emoji }) => (
               <button
                 key={key}
@@ -127,11 +221,17 @@ export default function AdjustTab() {
       <Separator className="bg-border" />
 
       {/* Special Effects */}
-      <Collapsible open={effectsOpen} onOpenChange={setEffectsOpen}>
-        <SectionHeader label="Special Effects" open={effectsOpen} />
+      <Collapsible
+        open={openGroups["Special Effects"]}
+        onOpenChange={() => toggle("Special Effects")}
+      >
+        <SectionHeader
+          label="Special Effects"
+          open={!!openGroups["Special Effects"]}
+        />
         <CollapsibleContent className="pb-3">
           <div className="grid grid-cols-2 gap-2">
-            {SPECIAL_EFFECTS.map(({ key, label }) => (
+            {SPECIAL_EFFECTS.map(({ key, label, emoji }) => (
               <button
                 key={key}
                 type="button"
@@ -142,13 +242,14 @@ export default function AdjustTab() {
                   })
                 }
                 className={cn(
-                  "px-2 py-1.5 rounded-md text-xs font-medium transition-colors border",
+                  "flex items-center gap-2 px-2 py-1.5 rounded-md text-xs font-medium transition-colors border",
                   state.specialEffect === key
                     ? "bg-primary/20 border-primary/50 text-primary ring-1 ring-primary/40"
                     : "bg-muted/40 border-border hover:bg-muted/70 text-muted-foreground hover:text-foreground",
                 )}
                 data-ocid={`adjust.effect.${key}.toggle`}
               >
+                <span>{emoji}</span>
                 {label}
               </button>
             ))}
@@ -171,8 +272,14 @@ export default function AdjustTab() {
       <Separator className="bg-border" />
 
       {/* Background Color */}
-      <Collapsible open={bgColorOpen} onOpenChange={setBgColorOpen}>
-        <SectionHeader label="Background Color" open={bgColorOpen} />
+      <Collapsible
+        open={openGroups["Background Color"]}
+        onOpenChange={() => toggle("Background Color")}
+      >
+        <SectionHeader
+          label="Background Color"
+          open={!!openGroups["Background Color"]}
+        />
         <CollapsibleContent className="pb-3">
           <div className="flex items-center gap-3">
             <div className="flex flex-col gap-1">
@@ -209,48 +316,64 @@ export default function AdjustTab() {
 
       <Separator className="bg-border" />
 
-      {/* Adjustments */}
-      <Collapsible open={adjOpen} onOpenChange={setAdjOpen}>
-        <SectionHeader label="Adjustments" open={adjOpen} />
-        <CollapsibleContent className="pb-3 space-y-4">
-          {ADJUSTMENT_FIELDS.map(({ key, label, min, max, step }) => (
-            <div key={key}>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[12px] text-muted-foreground font-medium">
-                  {label}
-                </span>
-                <span className="text-[11px] text-muted-foreground font-mono">
-                  {key === "blur" || key === "sharpness"
-                    ? state.adjustments[key].toFixed(1)
-                    : state.adjustments[key]}
-                </span>
-              </div>
-              <Slider
-                min={min}
-                max={max}
-                step={step}
-                value={[state.adjustments[key]]}
-                onValueChange={(v) => handleAdjChange(key, v)}
-                onValueCommit={() => dispatch({ type: "PUSH_HISTORY" })}
-                data-ocid={`adjustments.${key}.input`}
-              />
-            </div>
-          ))}
-        </CollapsibleContent>
-      </Collapsible>
-
-      <Separator className="bg-border" />
+      {/* Adjustment Groups */}
+      {ADJUSTMENT_GROUPS.map((group) => (
+        <div key={group.label}>
+          <Collapsible
+            open={openGroups[group.label]}
+            onOpenChange={() => toggle(group.label)}
+          >
+            <SectionHeader
+              label={group.label}
+              open={!!openGroups[group.label]}
+            />
+            <CollapsibleContent className="pb-3 space-y-4">
+              {group.fields.map(({ key, label, min, max, step }) => (
+                <div key={key}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[12px] text-muted-foreground font-medium">
+                      {label}
+                    </span>
+                    <span
+                      className="text-[11px] text-primary font-mono font-semibold"
+                      style={{ minWidth: 36, textAlign: "right" }}
+                    >
+                      {formatValue(key, state.adjustments[key])}
+                    </span>
+                  </div>
+                  <Slider
+                    min={min}
+                    max={max}
+                    step={step}
+                    value={[state.adjustments[key]]}
+                    onValueChange={(v) => handleAdjChange(key, v)}
+                    onValueCommit={() => dispatch({ type: "PUSH_HISTORY" })}
+                    data-ocid={`adjustments.${key}.input`}
+                  />
+                </div>
+              ))}
+            </CollapsibleContent>
+          </Collapsible>
+          <Separator className="bg-border" />
+        </div>
+      ))}
 
       {/* Rotation & Crop */}
-      <Collapsible open={rotOpen} onOpenChange={setRotOpen}>
-        <SectionHeader label="Rotation & Crop" open={rotOpen} />
+      <Collapsible
+        open={openGroups["Rotation & Crop"]}
+        onOpenChange={() => toggle("Rotation & Crop")}
+      >
+        <SectionHeader
+          label="Rotation & Crop"
+          open={!!openGroups["Rotation & Crop"]}
+        />
         <CollapsibleContent className="pb-3 space-y-3">
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[12px] text-muted-foreground font-medium">
                 Angle
               </span>
-              <span className="text-[11px] text-muted-foreground font-mono">
+              <span className="text-[11px] text-primary font-mono font-semibold">
                 {state.rotation}°
               </span>
             </div>
@@ -293,11 +416,6 @@ export default function AdjustTab() {
           </div>
         </CollapsibleContent>
       </Collapsible>
-
-      {/* Unused imports suppressed */}
-      <span className="hidden">
-        <Sparkles className="w-0 h-0" />
-      </span>
     </div>
   );
 }

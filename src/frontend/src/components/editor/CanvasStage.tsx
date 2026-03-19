@@ -5,9 +5,9 @@ import {
   useEditor,
 } from "@/contexts/EditorContext";
 import { cn } from "@/lib/utils";
-import { ImagePlus, Upload } from "lucide-react";
+import { ImagePlus, Minus, Plus, Upload, ZoomIn } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import BeforeAfterSlider from "./BeforeAfterSlider";
 
 const RULER_TICKS = Array.from({ length: 20 }, (_, i) => i);
@@ -28,11 +28,24 @@ const FONT_FAMILY_MAP: Record<TextLayer["fontFamily"], string> = {
   playfair: "'Playfair Display', serif",
 };
 
+const TEXT_ANIM_CLASS: Record<string, string> = {
+  none: "",
+  typing: "text-anim-typing",
+  glow: "text-anim-glow",
+  bounce: "text-anim-bounce",
+  fadein: "text-anim-fadein",
+};
+
 function TextOverlay({ layer }: { layer: TextLayer }) {
+  const { state, dispatch } = useEditor();
   const [pos, setPos] = useState({ x: layer.x, y: layer.y });
   const dragging = useRef(false);
   const offset = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLElement | null>(null);
+  const elemRef = useRef<HTMLDivElement>(null);
+
+  const isSelected =
+    state.selectedLayerId === layer.id && state.selectedLayerType === "text";
 
   const getNeonStyle = (color: string): React.CSSProperties => ({
     textShadow: `0 0 7px ${color}, 0 0 21px ${color}, 0 0 42px ${color}`,
@@ -46,6 +59,7 @@ function TextOverlay({ layer }: { layer: TextLayer }) {
 
   function onMouseDown(e: React.MouseEvent<HTMLDivElement>) {
     e.stopPropagation();
+    dispatch({ type: "SET_SELECTED_LAYER", id: layer.id, layerType: "text" });
     dragging.current = true;
     const parent = (e.currentTarget as HTMLElement).parentElement;
     if (!parent) return;
@@ -81,6 +95,7 @@ function TextOverlay({ layer }: { layer: TextLayer }) {
   function onTouchStart(e: React.TouchEvent<HTMLDivElement>) {
     e.preventDefault();
     e.stopPropagation();
+    dispatch({ type: "SET_SELECTED_LAYER", id: layer.id, layerType: "text" });
     dragging.current = true;
     const parent = (e.currentTarget as HTMLElement).parentElement;
     if (!parent) return;
@@ -116,12 +131,15 @@ function TextOverlay({ layer }: { layer: TextLayer }) {
   }
 
   const fontFamily = FONT_FAMILY_MAP[layer.fontFamily ?? "default"];
+  const rotation = layer.rotation ?? 0;
+  const scale = layer.scale ?? 1;
+  const animClass = TEXT_ANIM_CLASS[layer.textAnimation ?? "none"] ?? "";
 
   const baseStyle: React.CSSProperties = {
     position: "absolute",
     left: `${pos.x}%`,
     top: `${pos.y}%`,
-    transform: "translate(-50%, -50%)",
+    transform: `translate(-50%, -50%) rotate(${rotation}deg) scale(${scale})`,
     fontSize: layer.fontSize,
     color: layer.color,
     cursor: "move",
@@ -130,6 +148,10 @@ function TextOverlay({ layer }: { layer: TextLayer }) {
     fontFamily,
     fontWeight: layer.fontStyle !== "normal" ? "bold" : "normal",
     touchAction: "none",
+    textAlign: layer.align ?? "center",
+    letterSpacing: layer.letterSpacing ? `${layer.letterSpacing}px` : undefined,
+    outline: isSelected ? "2px dashed rgba(79,158,255,0.8)" : undefined,
+    outlineOffset: isSelected ? "4px" : undefined,
     ...(layer.fontStyle === "neon" ? getNeonStyle(layer.color) : {}),
     ...(layer.fontStyle === "glitch" ? getGlitchStyle(layer.color) : {}),
     ...(layer.fontStyle === "gradient"
@@ -149,25 +171,133 @@ function TextOverlay({ layer }: { layer: TextLayer }) {
       : {}),
   };
 
+  // Compute pixel position for handles (approx)
+  const handlePos = { x: `${pos.x}%`, y: `${pos.y}%` };
+
   return (
-    <div
-      style={baseStyle}
-      onMouseDown={onMouseDown}
-      onTouchStart={onTouchStart}
-    >
-      {layer.text}
-    </div>
+    <>
+      <div
+        ref={elemRef}
+        style={baseStyle}
+        className={animClass}
+        onMouseDown={onMouseDown}
+        onTouchStart={onTouchStart}
+      >
+        {layer.text}
+      </div>
+      {isSelected && (
+        <>
+          {/* Resize handle: bottom-right corner increases font size */}
+          <div
+            style={{
+              position: "absolute",
+              left: handlePos.x,
+              top: handlePos.y,
+              width: 12,
+              height: 12,
+              background: "white",
+              border: "2px solid #333",
+              borderRadius: 2,
+              transform: `translate(${layer.fontSize / 2}px, ${layer.fontSize / 2}px)`,
+              cursor: "se-resize",
+              zIndex: 30,
+              touchAction: "none",
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              let startX = e.clientX;
+              const startSize = layer.fontSize;
+              const onMove = (ev: PointerEvent) => {
+                const delta = ev.clientX - startX;
+                const newSize = Math.max(
+                  8,
+                  Math.min(200, startSize + delta * 0.5),
+                );
+                dispatch({
+                  type: "UPDATE_TEXT_LAYER",
+                  id: layer.id,
+                  changes: { fontSize: newSize },
+                });
+              };
+              const onUp = () => {
+                window.removeEventListener("pointermove", onMove);
+                window.removeEventListener("pointerup", onUp);
+              };
+              window.addEventListener("pointermove", onMove);
+              window.addEventListener("pointerup", onUp);
+            }}
+          />
+          {/* Rotate handle */}
+          <div
+            style={{
+              position: "absolute",
+              left: handlePos.x,
+              top: handlePos.y,
+              width: 14,
+              height: 14,
+              background: "#4f9eff",
+              border: "2px solid white",
+              borderRadius: "50%",
+              transform: `translate(-50%, -${layer.fontSize / 2 + 20}px)`,
+              cursor: "crosshair",
+              zIndex: 31,
+              touchAction: "none",
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              const parent = (e.currentTarget as HTMLElement).parentElement;
+              if (!parent) return;
+              const rect = parent.getBoundingClientRect();
+              const cx = rect.left + (pos.x / 100) * rect.width;
+              const cy = rect.top + (pos.y / 100) * rect.height;
+              const onMove = (ev: PointerEvent) => {
+                const angle =
+                  (Math.atan2(ev.clientY - cy, ev.clientX - cx) * 180) /
+                    Math.PI +
+                  90;
+                dispatch({
+                  type: "UPDATE_TEXT_LAYER",
+                  id: layer.id,
+                  changes: { rotation: angle },
+                });
+              };
+              const onUp = () => {
+                window.removeEventListener("pointermove", onMove);
+                window.removeEventListener("pointerup", onUp);
+              };
+              window.addEventListener("pointermove", onMove);
+              window.addEventListener("pointerup", onUp);
+            }}
+          />
+        </>
+      )}
+    </>
   );
 }
 
 function StickerOverlay({ layer }: { layer: StickerLayer }) {
+  const { state, dispatch } = useEditor();
   const [pos, setPos] = useState({ x: layer.x, y: layer.y });
   const dragging = useRef(false);
   const offset = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLElement | null>(null);
 
+  const isSelected =
+    state.selectedLayerId === layer.id && state.selectedLayerType === "sticker";
+
+  const rotation = layer.rotation ?? 0;
+  const scale = layer.scale ?? 1;
+  const displaySize = layer.size * scale;
+
   function onMouseDown(e: React.MouseEvent<HTMLDivElement>) {
     e.stopPropagation();
+    dispatch({
+      type: "SET_SELECTED_LAYER",
+      id: layer.id,
+      layerType: "sticker",
+    });
     dragging.current = true;
     const parent = (e.currentTarget as HTMLElement).parentElement;
     if (!parent) return;
@@ -203,71 +333,209 @@ function StickerOverlay({ layer }: { layer: StickerLayer }) {
   function onTouchStart(e: React.TouchEvent<HTMLDivElement>) {
     e.preventDefault();
     e.stopPropagation();
-    dragging.current = true;
-    const parent = (e.currentTarget as HTMLElement).parentElement;
-    if (!parent) return;
-    containerRef.current = parent;
-    const rect = parent.getBoundingClientRect();
-    const touch = e.touches[0];
-    offset.current = {
-      x: touch.clientX - (pos.x / 100) * rect.width,
-      y: touch.clientY - (pos.y / 100) * rect.height,
-    };
-    const onTouchMove = (ev: TouchEvent) => {
-      if (!dragging.current || !containerRef.current) return;
-      const r = containerRef.current.getBoundingClientRect();
-      const t = ev.touches[0];
-      setPos({
-        x: Math.max(
-          0,
-          Math.min(100, ((t.clientX - offset.current.x) / r.width) * 100),
-        ),
-        y: Math.max(
-          0,
-          Math.min(100, ((t.clientY - offset.current.y) / r.height) * 100),
-        ),
-      });
-    };
-    const onTouchEnd = () => {
-      dragging.current = false;
-      window.removeEventListener("touchmove", onTouchMove);
-      window.removeEventListener("touchend", onTouchEnd);
-    };
-    window.addEventListener("touchmove", onTouchMove, { passive: false });
-    window.addEventListener("touchend", onTouchEnd);
+    dispatch({
+      type: "SET_SELECTED_LAYER",
+      id: layer.id,
+      layerType: "sticker",
+    });
+    if (e.touches.length === 1) {
+      dragging.current = true;
+      const parent = (e.currentTarget as HTMLElement).parentElement;
+      if (!parent) return;
+      containerRef.current = parent;
+      const rect = parent.getBoundingClientRect();
+      const touch = e.touches[0];
+      offset.current = {
+        x: touch.clientX - (pos.x / 100) * rect.width,
+        y: touch.clientY - (pos.y / 100) * rect.height,
+      };
+      const onTouchMove = (ev: TouchEvent) => {
+        if (!dragging.current || !containerRef.current) return;
+        if (ev.touches.length === 1) {
+          const r = containerRef.current.getBoundingClientRect();
+          const t = ev.touches[0];
+          setPos({
+            x: Math.max(
+              0,
+              Math.min(100, ((t.clientX - offset.current.x) / r.width) * 100),
+            ),
+            y: Math.max(
+              0,
+              Math.min(100, ((t.clientY - offset.current.y) / r.height) * 100),
+            ),
+          });
+        }
+      };
+      const onTouchEnd = () => {
+        dragging.current = false;
+        window.removeEventListener("touchmove", onTouchMove);
+        window.removeEventListener("touchend", onTouchEnd);
+      };
+      window.addEventListener("touchmove", onTouchMove, { passive: false });
+      window.addEventListener("touchend", onTouchEnd);
+    }
   }
 
+  const handlePos = { x: `${pos.x}%`, y: `${pos.y}%` };
+
   return (
-    <div
-      style={{
-        position: "absolute",
-        left: `${pos.x}%`,
-        top: `${pos.y}%`,
-        transform: "translate(-50%, -50%)",
-        fontSize: layer.size,
-        cursor: "move",
-        userSelect: "none",
-        lineHeight: 1,
-        touchAction: "none",
-      }}
-      onMouseDown={onMouseDown}
-      onTouchStart={onTouchStart}
-    >
-      {layer.isCustom ? (
-        <img
-          src={layer.content}
-          alt="Custom sticker"
-          style={{
-            width: layer.size,
-            height: layer.size,
-            objectFit: "contain",
-          }}
-          draggable={false}
-        />
-      ) : (
-        layer.content
+    <>
+      <div
+        style={{
+          position: "absolute",
+          left: `${pos.x}%`,
+          top: `${pos.y}%`,
+          transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+          fontSize: displaySize,
+          cursor: "move",
+          userSelect: "none",
+          lineHeight: 1,
+          touchAction: "none",
+          outline: isSelected ? "2px dashed rgba(79,158,255,0.8)" : undefined,
+          outlineOffset: isSelected ? "4px" : undefined,
+        }}
+        onMouseDown={onMouseDown}
+        onTouchStart={onTouchStart}
+      >
+        {layer.isCustom ? (
+          <img
+            src={layer.content}
+            alt="Custom sticker"
+            style={{
+              width: displaySize,
+              height: displaySize,
+              objectFit: "contain",
+            }}
+            draggable={false}
+          />
+        ) : (
+          layer.content
+        )}
+      </div>
+      {isSelected && (
+        <>
+          {/* SE resize handle */}
+          <div
+            style={{
+              position: "absolute",
+              left: handlePos.x,
+              top: handlePos.y,
+              width: 12,
+              height: 12,
+              background: "white",
+              border: "2px solid #333",
+              borderRadius: 2,
+              transform: `translate(${displaySize / 2}px, ${displaySize / 2}px)`,
+              cursor: "se-resize",
+              zIndex: 30,
+              touchAction: "none",
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              const startX = e.clientX;
+              const startSize = displaySize;
+              const onMove = (ev: PointerEvent) => {
+                const delta = ev.clientX - startX;
+                const newSize = Math.max(20, Math.min(400, startSize + delta));
+                dispatch({
+                  type: "UPDATE_STICKER_LAYER",
+                  id: layer.id,
+                  changes: { size: newSize },
+                });
+              };
+              const onUp = () => {
+                window.removeEventListener("pointermove", onMove);
+                window.removeEventListener("pointerup", onUp);
+              };
+              window.addEventListener("pointermove", onMove);
+              window.addEventListener("pointerup", onUp);
+            }}
+          />
+          {/* NW resize handle */}
+          <div
+            style={{
+              position: "absolute",
+              left: handlePos.x,
+              top: handlePos.y,
+              width: 12,
+              height: 12,
+              background: "white",
+              border: "2px solid #333",
+              borderRadius: 2,
+              transform: `translate(-${displaySize / 2 + 6}px, -${displaySize / 2 + 6}px)`,
+              cursor: "nw-resize",
+              zIndex: 30,
+              touchAction: "none",
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              const startX = e.clientX;
+              const startSize = displaySize;
+              const onMove = (ev: PointerEvent) => {
+                const delta = startX - ev.clientX;
+                const newSize = Math.max(20, Math.min(400, startSize + delta));
+                dispatch({
+                  type: "UPDATE_STICKER_LAYER",
+                  id: layer.id,
+                  changes: { size: newSize },
+                });
+              };
+              const onUp = () => {
+                window.removeEventListener("pointermove", onMove);
+                window.removeEventListener("pointerup", onUp);
+              };
+              window.addEventListener("pointermove", onMove);
+              window.addEventListener("pointerup", onUp);
+            }}
+          />
+          {/* Rotate handle */}
+          <div
+            style={{
+              position: "absolute",
+              left: handlePos.x,
+              top: handlePos.y,
+              width: 14,
+              height: 14,
+              background: "#4f9eff",
+              border: "2px solid white",
+              borderRadius: "50%",
+              transform: `translate(-50%, -${displaySize / 2 + 24}px)`,
+              cursor: "crosshair",
+              zIndex: 31,
+              touchAction: "none",
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              const parent = (e.currentTarget as HTMLElement).parentElement;
+              if (!parent) return;
+              const rect = parent.getBoundingClientRect();
+              const cx = rect.left + (pos.x / 100) * rect.width;
+              const cy = rect.top + (pos.y / 100) * rect.height;
+              const onMove = (ev: PointerEvent) => {
+                const angle =
+                  (Math.atan2(ev.clientY - cy, ev.clientX - cx) * 180) /
+                    Math.PI +
+                  90;
+                dispatch({
+                  type: "UPDATE_STICKER_LAYER",
+                  id: layer.id,
+                  changes: { rotation: angle },
+                });
+              };
+              const onUp = () => {
+                window.removeEventListener("pointermove", onMove);
+                window.removeEventListener("pointerup", onUp);
+              };
+              window.addEventListener("pointermove", onMove);
+              window.addEventListener("pointerup", onUp);
+            }}
+          />
+        </>
       )}
-    </div>
+    </>
   );
 }
 
@@ -279,15 +547,23 @@ export default function CanvasStage() {
     null,
   );
   const imgContainerRef = useRef<HTMLDivElement>(null);
+  // Pinch zoom tracking
+  const pinchRef = useRef<{ dist: number; zoom: number } | null>(null);
 
   function loadFile(file: File) {
     if (!file.type.startsWith("image/")) return;
-    const url = URL.createObjectURL(file);
-    dispatch({
-      type: "LOAD_IMAGE",
-      url,
-      name: file.name.replace(/\.[^.]+$/, ""),
-    });
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const url = e.target?.result as string;
+      if (url) {
+        dispatch({
+          type: "LOAD_IMAGE",
+          url,
+          name: file.name.replace(/\.[^.]+$/, ""),
+        });
+      }
+    };
+    reader.readAsDataURL(file);
   }
 
   function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
@@ -359,6 +635,41 @@ export default function CanvasStage() {
     img.src = state.imageUrl;
   }, [state.imageUrl, state.cropRect, dispatch]);
 
+  // Pinch zoom handlers
+  function handleTouchStart(e: React.TouchEvent) {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      pinchRef.current = { dist, zoom: state.zoom };
+    }
+  }
+
+  function handleTouchMove(e: React.TouchEvent) {
+    if (e.touches.length === 2 && pinchRef.current) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const newZoom = Math.max(
+        0.25,
+        Math.min(5, (pinchRef.current.zoom * dist) / pinchRef.current.dist),
+      );
+      dispatch({ type: "SET_ZOOM", zoom: newZoom });
+    }
+  }
+
+  function handleTouchEnd() {
+    if (pinchRef.current) pinchRef.current = null;
+  }
+
+  // Click on canvas background deselects
+  function handleCanvasClick(e: React.MouseEvent) {
+    if (e.target === e.currentTarget) {
+      dispatch({ type: "SET_SELECTED_LAYER", id: null, layerType: null });
+    }
+  }
+
   const filterStr = buildFilterString(
     state.adjustments,
     state.activeFilter,
@@ -372,6 +683,8 @@ export default function CanvasStage() {
     .filter(Boolean)
     .join(" ");
 
+  const zoomPercent = Math.round(state.zoom * 100);
+
   return (
     <div
       className="flex-1 relative overflow-hidden dot-grid"
@@ -382,6 +695,14 @@ export default function CanvasStage() {
         setIsDragging(true);
       }}
       onDragLeave={() => setIsDragging(false)}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onClick={handleCanvasClick}
+      onKeyDown={(e) =>
+        e.key === "Escape" &&
+        dispatch({ type: "SET_SELECTED_LAYER", id: null, layerType: null })
+      }
       data-ocid="canvas.canvas_target"
     >
       {/* Rulers */}
@@ -393,7 +714,6 @@ export default function CanvasStage() {
             role="presentation"
           >
             {RULER_TICKS.map((i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: static ruler ticks
               <div
                 key={i}
                 className="flex-1 border-l border-border/40 text-[8px] text-muted-foreground/50 pl-0.5"
@@ -408,7 +728,6 @@ export default function CanvasStage() {
             role="presentation"
           >
             {RULER_TICKS.map((i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: static ruler ticks
               <div
                 key={i}
                 className="flex-1 border-t border-border/40 text-[8px] text-muted-foreground/50 pt-0.5 pl-0.5 leading-none"
@@ -448,7 +767,7 @@ export default function CanvasStage() {
                 initial={{ opacity: 0, scale: 0.97 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.25 }}
-                className="relative select-none"
+                className="relative select-none canvas-relative"
                 ref={imgContainerRef}
                 style={{
                   transform: `scale(${state.zoom})`,
@@ -479,14 +798,25 @@ export default function CanvasStage() {
                   style={{
                     filter: filterStr || "none",
                     transform: imgTransform || "none",
-                    maxWidth: "calc(100vw - 400px)",
-                    maxHeight: "calc(100vh - 120px)",
+                    maxWidth: "calc(100vw - 340px)",
+                    maxHeight: "calc(100vh - 180px)",
                     userSelect: "none",
                     pointerEvents: "none",
                     zIndex: 1,
                   }}
                   draggable={false}
                 />
+
+                {/* Vignette overlay on canvas */}
+                {state.adjustments.vignette > 0 && (
+                  <div
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                      background: `radial-gradient(ellipse at center, transparent ${100 - state.adjustments.vignette}%, rgba(0,0,0,${state.adjustments.vignette / 150}) 100%)`,
+                      zIndex: 2,
+                    }}
+                  />
+                )}
 
                 {/* Text overlays */}
                 {state.textLayers.map((layer) => (
@@ -515,7 +845,6 @@ export default function CanvasStage() {
                       role="presentation"
                     >
                       {GRID_CELLS.map((i) => (
-                        // biome-ignore lint/suspicious/noArrayIndexKey: static grid cells
                         <div key={i} className="border border-primary/20" />
                       ))}
                     </div>
@@ -585,20 +914,72 @@ export default function CanvasStage() {
                   PNG, JPG, WEBP, GIF up to 50MB
                 </p>
               </div>
-              <Button
-                type="button"
-                variant="secondary"
-                className="gap-2 text-sm"
-                onClick={() => fileInputRef.current?.click()}
-                data-ocid="canvas.upload_button"
+              <label
+                htmlFor="canvas-file-upload"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium cursor-pointer transition-colors"
+                style={{
+                  backgroundColor: "oklch(0.25 0.022 222)",
+                  color: "oklch(0.93 0.01 220)",
+                  border: "1px solid oklch(0.28 0.022 222)",
+                }}
+                data-ocid="canvas.upload_label"
               >
                 <Upload className="w-4 h-4" />
                 Choose File
-              </Button>
+              </label>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
+
+      {/* Zoom Controls */}
+      {state.imageUrl && (
+        <div
+          className="absolute bottom-4 right-4 z-20 flex items-center gap-0 rounded-full border border-border overflow-hidden shadow-lg"
+          style={{ background: "oklch(0.19 0.022 222)" }}
+          data-ocid="canvas.zoom_controls"
+        >
+          <button
+            type="button"
+            onClick={() =>
+              dispatch({ type: "SET_ZOOM", zoom: state.zoom - 0.25 })
+            }
+            disabled={state.zoom <= 0.25}
+            className="flex items-center justify-center w-8 h-8 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-40"
+            aria-label="Zoom out"
+          >
+            <Minus className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => dispatch({ type: "SET_ZOOM", zoom: 1 })}
+            className="flex items-center justify-center px-2 h-8 text-[11px] font-mono text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors min-w-[44px] border-x border-border"
+            aria-label="Reset zoom"
+          >
+            {zoomPercent}%
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              dispatch({ type: "SET_ZOOM", zoom: state.zoom + 0.25 })
+            }
+            disabled={state.zoom >= 4}
+            className="flex items-center justify-center w-8 h-8 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-40"
+            aria-label="Zoom in"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => dispatch({ type: "SET_ZOOM", zoom: 1 })}
+            className="flex items-center justify-center w-8 h-8 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors border-l border-border"
+            aria-label="Fit to view"
+            title="Fit to view"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Drag overlay */}
       <AnimatePresence>
@@ -616,11 +997,21 @@ export default function CanvasStage() {
         )}
       </AnimatePresence>
 
+      {/* File input */}
       <input
         ref={fileInputRef}
+        id="canvas-file-upload"
         type="file"
         accept="image/*"
-        className="hidden"
+        style={{
+          position: "absolute",
+          width: 1,
+          height: 1,
+          opacity: 0,
+          overflow: "hidden",
+          clip: "rect(0,0,0,0)",
+          whiteSpace: "nowrap",
+        }}
         onChange={handleFileInput}
       />
     </div>

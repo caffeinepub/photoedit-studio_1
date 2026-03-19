@@ -16,7 +16,8 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['Figtree', 'system-ui', 'sans-serif'],
+        display: ['Bricolage Grotesque', 'system-ui', 'sans-serif'],
       },
       colors: {
         border: "oklch(var(--border))",
@@ -78,6 +79,7 @@ export default {
       boxShadow: {
         xs: "0 1px 2px 0 rgba(0,0,0,0.05)",
         panel: "0 4px 24px 0 rgba(0,0,0,0.4)",
+        "glow-primary": "0 0 12px oklch(0.65 0.22 15 / 0.4)",
       },
       keyframes: {
         "accordion-down": {

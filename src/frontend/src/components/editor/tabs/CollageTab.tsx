@@ -1,10 +1,21 @@
 import { Button } from "@/components/ui/button";
+import { useEditor } from "@/contexts/EditorContext";
 import { cn } from "@/lib/utils";
-import { Download, Plus, X } from "lucide-react";
+import { Download, ImagePlus, Plus, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
-type GridLayout = "1x2" | "2x1" | "2x2" | "3x1" | "1x3";
+type GridLayout =
+  | "1x2"
+  | "2x1"
+  | "2x2"
+  | "3x1"
+  | "1x3"
+  | "1x4"
+  | "2x3"
+  | "3x2"
+  | "3x3";
+type FrameStyle = "none" | "white" | "black" | "rounded" | "shadow";
 
 const LAYOUTS: { id: GridLayout; label: string; cols: number; rows: number }[] =
   [
@@ -13,13 +24,27 @@ const LAYOUTS: { id: GridLayout; label: string; cols: number; rows: number }[] =
     { id: "2x2", label: "2×2", cols: 2, rows: 2 },
     { id: "3x1", label: "3×1", cols: 3, rows: 1 },
     { id: "1x3", label: "1×3", cols: 1, rows: 3 },
+    { id: "1x4", label: "1×4", cols: 1, rows: 4 },
+    { id: "2x3", label: "2×3", cols: 2, rows: 3 },
+    { id: "3x2", label: "3×2", cols: 3, rows: 2 },
+    { id: "3x3", label: "3×3", cols: 3, rows: 3 },
   ];
 
+const FRAME_STYLES: { id: FrameStyle; label: string }[] = [
+  { id: "none", label: "None" },
+  { id: "white", label: "White" },
+  { id: "black", label: "Black" },
+  { id: "rounded", label: "Round" },
+  { id: "shadow", label: "Shadow" },
+];
+
 const GAP = 4;
-const CELL_SIZE = 120;
+const CELL_SIZE = 110;
 
 export default function CollageTab() {
+  const { dispatch } = useEditor();
   const [layout, setLayout] = useState<GridLayout>("2x2");
+  const [frameStyle, setFrameStyle] = useState<FrameStyle>("none");
   const [photos, setPhotos] = useState<(string | null)[]>([
     null,
     null,
@@ -70,9 +95,25 @@ export default function CollageTab() {
     );
   }
 
-  async function downloadCollage() {
+  function getFrameStyle(frameId: FrameStyle): React.CSSProperties {
+    switch (frameId) {
+      case "white":
+        return { border: "6px solid white" };
+      case "black":
+        return { border: "6px solid #111" };
+      case "rounded":
+        return { borderRadius: 12, overflow: "hidden" };
+      case "shadow":
+        return { boxShadow: "0 4px 16px rgba(0,0,0,0.5)" };
+      default:
+        return {};
+    }
+  }
+
+  async function buildCollageCanvas(): Promise<HTMLCanvasElement | null> {
     const cols = current.cols;
     const rows = current.rows;
+    const framePad = frameStyle !== "none" ? 6 : 0;
     const canvas = document.createElement("canvas");
     const canvasW = cols * CELL_SIZE + (cols + 1) * GAP;
     const canvasH = rows * CELL_SIZE + (rows + 1) * GAP;
@@ -80,7 +121,15 @@ export default function CollageTab() {
     canvas.height = canvasH * 4;
     const ctx = canvas.getContext("2d")!;
     ctx.scale(4, 4);
-    ctx.fillStyle = "#111";
+
+    // Background
+    const bgColor =
+      frameStyle === "white"
+        ? "#ffffff"
+        : frameStyle === "black"
+          ? "#111111"
+          : "#111";
+    ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, canvasW, canvasH);
 
     const loadedPhotos = await Promise.all(
@@ -101,8 +150,20 @@ export default function CollageTab() {
         const idx = row * cols + col;
         const x = GAP + col * (CELL_SIZE + GAP);
         const y = GAP + row * (CELL_SIZE + GAP);
+        const fx = x + framePad;
+        const fy = y + framePad;
+        const fw = CELL_SIZE - framePad * 2;
+        const fh = CELL_SIZE - framePad * 2;
+
         ctx.fillStyle = "#222";
-        ctx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
+        if (frameStyle === "rounded") {
+          ctx.beginPath();
+          ctx.roundRect(x, y, CELL_SIZE, CELL_SIZE, 8);
+          ctx.fill();
+        } else {
+          ctx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
+        }
+
         const img = loadedPhotos[idx];
         if (img) {
           const aspect = img.naturalWidth / img.naturalHeight;
@@ -117,11 +178,45 @@ export default function CollageTab() {
             sh = sw;
             sy = (img.naturalHeight - sh) / 2;
           }
-          ctx.drawImage(img, sx, sy, sw, sh, x, y, CELL_SIZE, CELL_SIZE);
+
+          if (frameStyle === "shadow") {
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = "rgba(0,0,0,0.7)";
+          }
+
+          if (frameStyle === "rounded") {
+            ctx.save();
+            ctx.beginPath();
+            ctx.roundRect(fx, fy, fw, fh, 6);
+            ctx.clip();
+            ctx.drawImage(img, sx, sy, sw, sh, fx, fy, fw, fh);
+            ctx.restore();
+          } else {
+            ctx.drawImage(img, sx, sy, sw, sh, fx, fy, fw, fh);
+          }
+
+          ctx.shadowBlur = 0;
+
+          // Frame border
+          if (frameStyle === "white" || frameStyle === "black") {
+            ctx.strokeStyle = frameStyle === "white" ? "#ffffff" : "#111111";
+            ctx.lineWidth = framePad;
+            ctx.strokeRect(
+              x + framePad / 2,
+              y + framePad / 2,
+              CELL_SIZE - framePad,
+              CELL_SIZE - framePad,
+            );
+          }
         }
       }
     }
+    return canvas;
+  }
 
+  async function downloadCollage() {
+    const canvas = await buildCollageCanvas();
+    if (!canvas) return;
     canvas.toBlob((blob) => {
       if (!blob) return;
       const a = document.createElement("a");
@@ -132,15 +227,24 @@ export default function CollageTab() {
     });
   }
 
-  const CELL_KEYS = ["c0", "c1", "c2", "c3", "c4", "c5"];
+  async function loadCollageAsMain() {
+    const canvas = await buildCollageCanvas();
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL("image/png");
+    dispatch({ type: "LOAD_IMAGE", url: dataUrl, name: "collage" });
+    toast.success("Collage loaded as main image!");
+  }
+
+  const hasAnyPhoto = photos.slice(0, totalCells).some((p) => !!p);
 
   return (
-    <div className="px-3 py-3 space-y-4">
+    <div className="px-3 py-3 space-y-4 pb-20">
+      {/* Grid Layout */}
       <div>
         <p className="text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
           Grid Layout
         </p>
-        <div className="flex gap-1.5 flex-wrap">
+        <div className="flex gap-1 flex-wrap">
           {LAYOUTS.map((l) => (
             <button
               key={l.id}
@@ -160,9 +264,36 @@ export default function CollageTab() {
         </div>
       </div>
 
+      {/* Frame Style */}
       <div>
         <p className="text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
-          Photos
+          Frame Style
+        </p>
+        <div className="flex gap-1">
+          {FRAME_STYLES.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => setFrameStyle(f.id)}
+              className={cn(
+                "flex-1 py-1.5 rounded text-[10px] border transition-colors",
+                frameStyle === f.id
+                  ? "border-primary bg-primary/20 text-primary"
+                  : "border-border bg-card text-muted-foreground hover:text-foreground",
+              )}
+              data-ocid={`collage.frame.${f.id}`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Photos Grid */}
+      <div>
+        <p className="text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
+          Photos ({photos.slice(0, totalCells).filter(Boolean).length}/
+          {totalCells})
         </p>
         <div
           className="grid gap-1"
@@ -171,9 +302,13 @@ export default function CollageTab() {
         >
           {Array.from({ length: totalCells }, (_, i) => (
             <div
-              key={CELL_KEYS[i] ?? i}
+              // biome-ignore lint/suspicious/noArrayIndexKey: grid cell order is significant
+              key={i}
               className="relative aspect-square rounded overflow-hidden border border-border cursor-pointer group"
-              style={{ background: "oklch(0.20 0.02 222)" }}
+              style={{
+                background: "oklch(0.20 0.02 222)",
+                ...getFrameStyle(frameStyle),
+              }}
               data-ocid={`collage.item.${i + 1}`}
             >
               {photos[i] ? (
@@ -196,10 +331,11 @@ export default function CollageTab() {
                 <button
                   type="button"
                   onClick={() => handleCellClick(i)}
-                  className="w-full h-full flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                  className="w-full h-full flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
                   data-ocid="collage.upload_button"
                 >
-                  <Plus className="w-6 h-6" />
+                  <Plus className="w-5 h-5" />
+                  <span className="text-[10px]">{i + 1}</span>
                 </button>
               )}
             </div>
@@ -207,17 +343,32 @@ export default function CollageTab() {
         </div>
       </div>
 
-      <Button
-        type="button"
-        size="sm"
-        className="w-full h-8 text-xs gap-1.5 bg-primary text-primary-foreground"
-        onClick={downloadCollage}
-        disabled={photos.slice(0, totalCells).every((p) => !p)}
-        data-ocid="collage.primary_button"
-      >
-        <Download className="w-3.5 h-3.5" />
-        Download Collage
-      </Button>
+      {/* Action Buttons */}
+      <div className="space-y-2">
+        <Button
+          type="button"
+          size="sm"
+          className="w-full h-8 text-xs gap-1.5 bg-primary text-primary-foreground"
+          onClick={loadCollageAsMain}
+          disabled={!hasAnyPhoto}
+          data-ocid="collage.load_main.button"
+        >
+          <ImagePlus className="w-3.5 h-3.5" />
+          Open in Editor
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="w-full h-8 text-xs gap-1.5"
+          onClick={downloadCollage}
+          disabled={!hasAnyPhoto}
+          data-ocid="collage.primary_button"
+        >
+          <Download className="w-3.5 h-3.5" />
+          Download Collage
+        </Button>
+      </div>
 
       <input
         ref={fileRef}

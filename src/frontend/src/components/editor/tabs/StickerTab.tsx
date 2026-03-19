@@ -1,21 +1,34 @@
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { type StickerLayer, useEditor } from "@/contexts/EditorContext";
-import { Trash2, Upload } from "lucide-react";
+import { Search, Trash2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 const BUILTIN_STICKERS = [
-  "😎",
-  "🔥",
-  "❤️",
-  "🌟",
-  "👑",
-  "🎉",
-  "💫",
-  "🦋",
-  "🌈",
-  "💎",
-  "🎨",
-  "🚀",
+  { emoji: "😎", tags: ["cool", "sunglasses"] },
+  { emoji: "🔥", tags: ["fire", "hot", "trending"] },
+  { emoji: "❤️", tags: ["heart", "love", "red"] },
+  { emoji: "🌟", tags: ["star", "shine", "gold"] },
+  { emoji: "👑", tags: ["crown", "king", "queen", "royal"] },
+  { emoji: "🎉", tags: ["party", "celebrate", "confetti"] },
+  { emoji: "💫", tags: ["dizzy", "star", "sparkle"] },
+  { emoji: "🦋", tags: ["butterfly", "nature"] },
+  { emoji: "🌈", tags: ["rainbow", "colorful"] },
+  { emoji: "💎", tags: ["diamond", "gem", "sparkle"] },
+  { emoji: "🎨", tags: ["art", "paint", "creative"] },
+  { emoji: "🚀", tags: ["rocket", "space", "launch"] },
+  { emoji: "😍", tags: ["love", "heart eyes", "cute"] },
+  { emoji: "🥰", tags: ["love", "hearts", "cute"] },
+  { emoji: "😂", tags: ["funny", "laugh", "lol"] },
+  { emoji: "🤣", tags: ["funny", "laugh", "rofl"] },
+  { emoji: "✨", tags: ["sparkle", "magic", "shine"] },
+  { emoji: "💯", tags: ["100", "perfect", "score"] },
+  { emoji: "🏆", tags: ["trophy", "winner", "gold"] },
+  { emoji: "⚡", tags: ["lightning", "electric", "power"] },
+  { emoji: "🌺", tags: ["flower", "nature", "bloom"] },
+  { emoji: "🎭", tags: ["drama", "theater", "mask"] },
+  { emoji: "🌙", tags: ["moon", "night", "crescent"] },
+  { emoji: "☀️", tags: ["sun", "sunny", "bright"] },
 ];
 
 // Twemoji sticker images
@@ -52,13 +65,14 @@ interface GiphySticker {
   title: string;
 }
 
-const GIPHY_API_KEY = "dc6zaTOxFJmzC"; // public demo key
+const GIPHY_API_KEY = "dc6zaTOxFJmzC";
 
 export default function StickerTab() {
   const { state, dispatch } = useEditor();
   const fileRef = useRef<HTMLInputElement>(null);
   const [giphyStickers, setGiphyStickers] = useState<GiphySticker[]>([]);
   const [giphyLoading, setGiphyLoading] = useState(false);
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     setGiphyLoading(true);
@@ -134,15 +148,34 @@ export default function StickerTab() {
     e.target.value = "";
   }
 
+  const q = search.toLowerCase().trim();
+  const filteredStickers = q
+    ? BUILTIN_STICKERS.filter(
+        (s) => s.tags.some((t) => t.includes(q)) || s.emoji.includes(q),
+      )
+    : BUILTIN_STICKERS;
+
   return (
-    <div className="px-3 py-3 space-y-4">
+    <div className="px-3 py-3 space-y-4 pb-20">
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search emoji (fire, love, star...)"
+          className="pl-8 h-8 text-xs bg-input border-border"
+          data-ocid="sticker.search.input"
+        />
+      </div>
+
       {/* Emoji Stickers */}
       <div>
         <p className="text-xs font-semibold text-foreground uppercase tracking-wider mb-3">
-          Emoji Stickers
+          Emoji Stickers {q && `(${filteredStickers.length})`}
         </p>
         <div className="grid grid-cols-6 gap-1">
-          {BUILTIN_STICKERS.map((emoji) => (
+          {filteredStickers.map(({ emoji }) => (
             <button
               key={emoji}
               type="button"
@@ -157,70 +190,79 @@ export default function StickerTab() {
               {emoji}
             </button>
           ))}
+          {filteredStickers.length === 0 && (
+            <p className="col-span-6 text-xs text-muted-foreground text-center py-2">
+              No emoji found for "{q}"
+            </p>
+          )}
         </div>
       </div>
 
       {/* Twemoji Image Stickers */}
-      <div>
-        <p className="text-xs font-semibold text-foreground uppercase tracking-wider mb-3">
-          Image Stickers
-        </p>
-        <div className="grid grid-cols-3 gap-2">
-          {TWEMOJI_STICKERS.map((s) => (
-            <button
-              key={s.url}
-              type="button"
-              onClick={() => addSticker(s.url, true)}
-              className="aspect-square flex items-center justify-center rounded-md hover:bg-muted/60 border border-transparent hover:border-border transition-colors p-1"
-              disabled={!state.imageUrl}
-              title={s.label}
-              data-ocid="sticker.image_button"
-            >
-              <img
-                src={s.url}
-                alt={s.label}
-                className="w-10 h-10 object-contain"
-              />
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Giphy Trending Stickers */}
-      <div>
-        <p className="text-xs font-semibold text-foreground uppercase tracking-wider mb-3">
-          Trending GIFs (Giphy)
-        </p>
-        {giphyLoading ? (
-          <p className="text-xs text-muted-foreground text-center py-2">
-            Loading...
+      {!q && (
+        <div>
+          <p className="text-xs font-semibold text-foreground uppercase tracking-wider mb-3">
+            Image Stickers
           </p>
-        ) : giphyStickers.length > 0 ? (
-          <div className="grid grid-cols-3 gap-1">
-            {giphyStickers.map((s) => (
+          <div className="grid grid-cols-3 gap-2">
+            {TWEMOJI_STICKERS.map((s) => (
               <button
-                key={s.id}
+                key={s.url}
                 type="button"
                 onClick={() => addSticker(s.url, true)}
-                className="aspect-square overflow-hidden rounded-md hover:ring-2 hover:ring-primary border border-border transition-all"
+                className="aspect-square flex items-center justify-center rounded-md hover:bg-muted/60 border border-transparent hover:border-border transition-colors p-1"
                 disabled={!state.imageUrl}
-                title={s.title}
-                data-ocid="sticker.giphy_button"
+                title={s.label}
+                data-ocid="sticker.image_button"
               >
                 <img
                   src={s.url}
-                  alt={s.title}
-                  className="w-full h-full object-cover"
+                  alt={s.label}
+                  className="w-10 h-10 object-contain"
                 />
               </button>
             ))}
           </div>
-        ) : (
-          <p className="text-xs text-muted-foreground text-center py-2">
-            Giphy stickers load nahi hue
+        </div>
+      )}
+
+      {/* Giphy Trending Stickers */}
+      {!q && (
+        <div>
+          <p className="text-xs font-semibold text-foreground uppercase tracking-wider mb-3">
+            Trending GIFs (Giphy)
           </p>
-        )}
-      </div>
+          {giphyLoading ? (
+            <p className="text-xs text-muted-foreground text-center py-2">
+              Loading...
+            </p>
+          ) : giphyStickers.length > 0 ? (
+            <div className="grid grid-cols-3 gap-1">
+              {giphyStickers.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => addSticker(s.url, true)}
+                  className="aspect-square overflow-hidden rounded-md hover:ring-2 hover:ring-primary border border-border transition-all"
+                  disabled={!state.imageUrl}
+                  title={s.title}
+                  data-ocid="sticker.giphy_button"
+                >
+                  <img
+                    src={s.url}
+                    alt={s.title}
+                    className="w-full h-full object-cover"
+                  />
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground text-center py-2">
+              Giphy stickers load nahi hue
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Upload Custom */}
       <Button
@@ -246,7 +288,9 @@ export default function StickerTab() {
       {/* Placed Stickers List */}
       {state.stickerLayers.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">Placed Stickers</p>
+          <p className="text-xs text-muted-foreground">
+            Placed Stickers ({state.stickerLayers.length})
+          </p>
           {state.stickerLayers.map((layer, i) => (
             <div
               key={layer.id}

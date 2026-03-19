@@ -2,7 +2,7 @@ import { useEditor } from "@/contexts/EditorContext";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-const TEMPLATES = [
+const SOCIAL_TEMPLATES = [
   {
     id: "yt_thumb",
     label: "YouTube Thumbnail",
@@ -59,20 +59,69 @@ const TEMPLATES = [
   },
 ];
 
+const GAMING_TEMPLATES = [
+  {
+    id: "free_fire",
+    label: "Free Fire",
+    emoji: "🔥",
+    w: 1280,
+    h: 720,
+    aspect: "16:9",
+    bg: "linear-gradient(135deg, #0d0d0d 0%, #7b0000 50%, #ff4500 100%)",
+    overlay:
+      "linear-gradient(135deg, rgba(255,50,0,0.3) 0%, rgba(0,0,0,0.7) 100%)",
+  },
+  {
+    id: "bgmi",
+    label: "BGMI",
+    emoji: "🎯",
+    w: 1280,
+    h: 720,
+    aspect: "16:9",
+    bg: "linear-gradient(135deg, #1a2a0a 0%, #2d4a1a 50%, #c85a00 100%)",
+    overlay:
+      "linear-gradient(135deg, rgba(200,90,0,0.25) 0%, rgba(0,0,0,0.65) 100%)",
+  },
+  {
+    id: "gaming_yt",
+    label: "Gaming YT",
+    emoji: "🎮",
+    w: 1280,
+    h: 720,
+    aspect: "16:9",
+    bg: "linear-gradient(135deg, #000000 0%, #1a0033 50%, #ff0066 100%)",
+    overlay:
+      "linear-gradient(135deg, rgba(255,0,100,0.2) 0%, rgba(0,0,0,0.7) 100%)",
+  },
+  {
+    id: "neon_gaming",
+    label: "Neon Gaming",
+    emoji: "⚡",
+    w: 1280,
+    h: 720,
+    aspect: "16:9",
+    bg: "linear-gradient(135deg, #000000 0%, #001133 50%, #0066ff 100%)",
+    overlay:
+      "linear-gradient(135deg, rgba(0,100,255,0.25) 0%, rgba(0,0,0,0.65) 100%)",
+  },
+];
+
 function loadTemplate(
   src: string,
   dispatch: (a: { type: string; url: string; name: string }) => void,
   label: string,
 ) {
-  // Load the template image as the canvas background
   dispatch({ type: "LOAD_IMAGE", url: src, name: label });
   toast.success(`Template loaded: ${label}`);
 }
 
+type Template = (typeof SOCIAL_TEMPLATES)[0];
+type GamingTemplate = (typeof GAMING_TEMPLATES)[0];
+
 export default function TemplatesTab() {
   const { state, dispatch } = useEditor();
 
-  function applyTemplate(t: (typeof TEMPLATES)[0]) {
+  function applyTemplate(t: Template | GamingTemplate) {
     if (!state.imageUrl) {
       toast.error("Upload an image first");
       return;
@@ -105,6 +154,17 @@ export default function TemplatesTab() {
         sy = (img.naturalHeight - sh) / 2;
       }
       ctx.drawImage(img, sx, sy, sw, sh, 0, 0, t.w, t.h);
+
+      // Apply gaming overlay if present
+      if ("overlay" in t && t.overlay) {
+        const grad = ctx.createLinearGradient(0, 0, t.w, t.h);
+        // Parse simple gradient stops (simplified)
+        grad.addColorStop(0, "rgba(0,0,0,0.2)");
+        grad.addColorStop(1, "rgba(0,0,0,0.5)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, t.w, t.h);
+      }
+
       const newUrl = canvas.toDataURL("image/png");
       loadTemplate(
         newUrl,
@@ -115,15 +175,10 @@ export default function TemplatesTab() {
     img.src = state.imageUrl;
   }
 
-  return (
-    <div className="px-3 py-3">
-      <p className="text-xs font-semibold text-foreground uppercase tracking-wider mb-3">
-        Templates
-      </p>
-
-      {/* Thumbnail Grid */}
-      <div className="templates grid grid-cols-2 gap-2 mb-4">
-        {TEMPLATES.map((t) => (
+  function renderGrid(templates: (Template | GamingTemplate)[]) {
+    return (
+      <div className="grid grid-cols-2 gap-2 mb-4">
+        {templates.map((t) => (
           <button
             key={t.id}
             type="button"
@@ -138,7 +193,6 @@ export default function TemplatesTab() {
             )}
             data-ocid={`template.${t.id}.thumb`}
           >
-            {/* Thumbnail preview */}
             <div
               className="w-full flex items-center justify-center"
               style={{
@@ -150,7 +204,6 @@ export default function TemplatesTab() {
             >
               <span className="text-2xl drop-shadow">{t.emoji}</span>
             </div>
-            {/* Label overlay */}
             <div className="absolute inset-x-0 bottom-0 bg-black/60 px-1 py-0.5">
               <p className="text-[9px] text-white font-semibold truncate leading-tight">
                 {t.label}
@@ -162,20 +215,36 @@ export default function TemplatesTab() {
           </button>
         ))}
       </div>
+    );
+  }
 
-      {/* List view */}
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+  return (
+    <div className="px-3 py-3 pb-20">
+      {/* Social Templates */}
+      <p className="text-xs font-semibold text-foreground uppercase tracking-wider mb-3">
+        Social Media
+      </p>
+      {renderGrid(SOCIAL_TEMPLATES)}
+
+      {/* Gaming Templates */}
+      <p className="text-xs font-semibold text-foreground uppercase tracking-wider mb-3 mt-2">
+        🎮 Gaming Thumbnails
+      </p>
+      {renderGrid(GAMING_TEMPLATES)}
+
+      {/* Full list */}
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 mt-2">
         All Sizes
       </p>
-      <div className="space-y-2">
-        {TEMPLATES.map((t) => (
+      <div className="space-y-1.5">
+        {[...SOCIAL_TEMPLATES, ...GAMING_TEMPLATES].map((t) => (
           <button
             key={`list-${t.id}`}
             type="button"
             onClick={() => applyTemplate(t)}
             disabled={!state.imageUrl}
             className={cn(
-              "w-full flex items-center gap-3 rounded-lg px-3 py-2.5 border transition-all text-left",
+              "w-full flex items-center gap-3 rounded-lg px-3 py-2 border transition-all text-left",
               "border-border bg-card hover:border-primary hover:bg-primary/10",
               "disabled:opacity-40 disabled:cursor-not-allowed",
             )}
